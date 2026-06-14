@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Document Upload</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="index.html" class="nav-link active">Upload</a>
+        <a href="chat.html" class="nav-link">Chat Workspace</a>
+    </nav>
+
+    <div class="upload-container">
+        <div class="header">
+            <h2>Knowledge Base Upload</h2>
+            <p>Upload your documents to feed the RAG pipeline.</p>
+        </div>
+
+        <div class="drop-zone" id="drop-zone">
+            <div class="icon">📁</div>
+            <p class="drop-text">Drag & drop your files here or <span class="browse-btn" id="browse-btn">browse</span></p>
+            <input type="file" id="file-input" multiple style="display: none;">
+        </div>
+
+        <div class="file-list-container" id="file-list-container" style="display: none;">
+            <h3>Selected Files</h3>
+            <ul class="file-list" id="file-list"></ul>
+        </div>
+
+        <button class="process-btn" id="process-btn" disabled>Process Documents</button>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAG Chat System</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <nav class="navbar">
+        <a href="index.html" class="nav-link">Upload</a>
+        <a href="chat.html" class="nav-link active">Chat Workspace</a>
+    </nav>
+
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2>RAG Assistant</h2>
+            <span class="status-indicator">● Connected to Index</span>
+        </div>
+
+        <div class="chat-window" id="chat-window">
+            <div class="message system-message">
+                Hello! I have indexed your document. Ask me anything about it.
+            </div>
+        </div>
+
+        <div class="chat-input-area">
+            <input type="text" id="user-input" placeholder="Ask a question about your documents..." autocomplete="off">
+            <button id="send-btn">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatWindow = document.getElementById('chat-window');
+        const userInput = document.getElementById('user-input');
+        const sendBtn = document.getElementById('send-btn');
+
+        // Append messages smoothly
+        function appendMessage(text, sender) {
+            const msgDiv = document.createElement('div');
+            msgDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
+            msgDiv.innerText = text;
+            chatWindow.appendChild(msgDiv);
+            
+            // Auto-scroll to bottom
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        async function handleSend() {
+            const query = userInput.value.trim();
+            if (!query) return;
+
+            // 1. Show user question
+            appendMessage(query, 'user');
+            userInput.value = '';
+
+            // 2. Query your backend endpoint (Adjust URL if yours is different, e.g., /query or /chat)
+            try {
+                const response = await fetch("http://127.0.0.1:8000/ask/", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ question: query })
+                });
+
+                const data = await response.json();
+                appendMessage(`${data.answer}\n\nSource:\n${data.sources[0]}`,'bot');
+            } catch (error) {
+                console.error(error);
+                appendMessage("Error connecting to RAG backend pipeline.", 'bot');
+            }
+        }
+
+        sendBtn.addEventListener('click', handleSend);
+        userInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') handleSend();
+        });
+    </script>
+</body>
+</html>
