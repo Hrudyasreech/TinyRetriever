@@ -1,23 +1,5 @@
-import time
-from ollama import chat
+from sentence_transformers import SentenceTransformer
 
-start = time.time()
-
-response = chat(
-    model="qwen3.5:4b",
-    messages=[
-        {
-            "role": "system",
-            "content": "Answer in one short sentence. Do not explain."
-        },
-        {
-            "role": "user",
-            "content": "/no_think What is 2+2?"
-        }
-    ], think = False
+model = SentenceTransformer(
+    "sentence-transformers/all-MiniLM-L6-v2"
 )
-
-print(response["message"])
-print(response.message.content)
-print(response.message.thinking)
-print("Seconds:", time.time() - start)

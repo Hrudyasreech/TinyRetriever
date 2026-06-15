@@ -1,16 +1,21 @@
-# Virtual environment
+# Virtual Environment
 .venv/
 
-# Python cache
-__pycache__/
-*.pyc
+# VS Code
+.vscode/
 
 # Environment variables
 .env
 
-# OS files
-.DS_Store
-Thumbs.db
+# Database
+*.db
 
-# VS Code
-.vscode/
+# FAISS indexes
+*.faiss
+
+# Uploaded documents
+uploads/
+
+# Python cache
+__pycache__/
+*.pyc
