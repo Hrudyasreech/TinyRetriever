@@ -9,6 +9,7 @@
 
 # Database
 *.db
+*.pdf
 
 # FAISS indexes
 *.faiss

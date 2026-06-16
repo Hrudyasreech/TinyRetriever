@@ -3,78 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RAG Chat System</title>
+    <title>RAG Workspace Studio</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
 
-    <nav class="navbar">
-        <a href="index.html" class="nav-link">Upload</a>
-        <a href="chat.html" class="nav-link active">Chat Workspace</a>
-    </nav>
-
-    <div class="chat-container">
-        <div class="chat-header">
-            <h2>RAG Assistant</h2>
-            <span class="status-indicator">● Connected to Index</span>
-        </div>
-
-        <div class="chat-window" id="chat-window">
-            <div class="message system-message">
-                Hello! I have indexed your document. Ask me anything about it.
+    <div class="app-layout">
+        
+        <aside class="sidebar">
+            <div class="header">
+                <h2>Knowledge Base</h2>
+                <p>Upload files to feed your RAG pipeline.</p>
             </div>
-        </div>
 
-        <div class="chat-input-area">
-            <input type="text" id="user-input" placeholder="Ask a question about your documents..." autocomplete="off">
-            <button id="send-btn">Send</button>
-        </div>
+            <div class="drop-zone" id="drop-zone">
+                <div class="icon" aria-hidden="true">📁</div>
+                <p class="drop-text">Drag & drop files here or <span class="browse-btn" id="browse-btn" role="button" tabindex="0">browse</span></p>
+                <input type="file" id="file-input" multiple style="display: none;" aria-label="Upload PDF documents" title="Upload PDF documents">
+            </div>
+
+            <div class="file-list-container" id="file-list-container" style="display: none;">
+                <h3>Selected Sources</h3>
+                <ul class="file-list" id="file-list"></ul>
+            </div>
+
+            <button type="button" class="process-btn" id="process-btn" disabled>Process Documents</button>
+
+            <div class="indexed-box-wrapper" id="indexed-box-wrapper">
+                <div class="indexed-box-header">
+                    <h3>Indexed Documents</h3>
+                </div>
+                <div class="indexed-box-body">
+                    <ul class="indexed-list" id="indexed-list">
+                        <li class="empty-loading-msg">Checking system store...</li>
+                    </ul>
+                </div>
+            </div>
+        </aside>
+
+        <main class="chat-container">
+            <div class="chat-header">
+                <h2>RAG Assistant</h2>
+                <span class="status-indicator" id="status-indicator">○ Awaiting Documents</span>
+            </div>
+
+            <div class="chat-window" id="chat-window">
+                <div class="message system-message">
+                    Welcome! Drop your training documents or notes on the left panel. Once indexed, you can query your knowledge base here.
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <input type="text" id="user-input" placeholder="Ask a question about your documents..." autocomplete="off" aria-label="Query input" title="Query input">
+                <button id="send-btn" type="button">Send</button>
+            </div>
+        </main>
+
     </div>
 
-    <script>
-        const chatWindow = document.getElementById('chat-window');
-        const userInput = document.getElementById('user-input');
-        const sendBtn = document.getElementById('send-btn');
-
-        // Append messages smoothly
-        function appendMessage(text, sender) {
-            const msgDiv = document.createElement('div');
-            msgDiv.classList.add('message', sender === 'user' ? 'user-message' : 'bot-message');
-            msgDiv.innerText = text;
-            chatWindow.appendChild(msgDiv);
-            
-            // Auto-scroll to bottom
-            chatWindow.scrollTop = chatWindow.scrollHeight;
-        }
-
-        async function handleSend() {
-            const query = userInput.value.trim();
-            if (!query) return;
-
-            // 1. Show user question
-            appendMessage(query, 'user');
-            userInput.value = '';
-
-            // 2. Query your backend endpoint (Adjust URL if yours is different, e.g., /query or /chat)
-            try {
-                const response = await fetch("http://127.0.0.1:8000/ask/", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ question: query })
-                });
-
-                const data = await response.json();
-                appendMessage(`${data.answer}\n\nSource:\n${data.sources[0]}`,'bot');
-            } catch (error) {
-                console.error(error);
-                appendMessage("Error connecting to RAG backend pipeline.", 'bot');
-            }
-        }
-
-        sendBtn.addEventListener('click', handleSend);
-        userInput.addEventListener('keypress', (e) => {
-            if (e.key === 'Enter') handleSend();
-        });
-    </script>
+    <script src="script.js"></script>
 </body>
 </html>

@@ -4,11 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>RAG Workspace Studio</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="first.css">
 </head>
 <body>
 
-    <div class="app-layout">
+    <div id="dashboard-view" class="dashboard-container">
+        <header class="dashboard-header">
+            <h1>Welcome to RAG Studio</h1>
+            <button type="button" class="create-project-btn" id="open-create-modal-btn">
+                <span class="plus-icon">+</span> Create new project
+            </button>
+        </header>
+
+        <section class="projects-section">
+            <h3>Recent Projects</h3>
+            <div class="projects-grid" id="projects-grid">
+                <div class="project-card create-card" id="inline-create-card">
+                    <div class="plus-circle">+</div>
+                    <p>Create new project</p>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div id="project-modal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <h3>New Project Workspace</h3>
+            <input type="text" id="new-project-name" placeholder="Enter project name..." autocomplete="off">
+            <textarea id="new-project-desc" placeholder="Project details or description (optional)..."></textarea>
+            <div class="modal-actions">
+                <button type="button" id="close-modal-btn" class="cancel-btn">Cancel</button>
+                <button type="button" id="submit-project-btn" class="confirm-btn">Create</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="app-layout" style="display: none;">
         
         <aside class="sidebar">
             <div class="header">
@@ -61,6 +92,6 @@
 
     </div>
 
-    <script src="script.js"></script>
+    <script src="first.js"></script>
 </body>
 </html>
