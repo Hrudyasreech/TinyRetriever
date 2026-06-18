@@ -5,21 +5,24 @@ import torch
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer 
 
+
 # Auto-detect best hardware acceleration backend
 device = "cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu"
 model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device=device)
 
 INDEX_PATH = "index.faiss" 
 
-def chunk_and_embed(text: str):
-    # Granular chunks ideal for short specific data points (names, specific metrics, dates)
-    splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=40)
-    chunks = splitter.split_text(text)
-    if not chunks:
-        return [], np.empty((0, model.get_sentence_embedding_dimension()), dtype='float32')
-        
+splitter = RecursiveCharacterTextSplitter(
+    chunk_size=200,
+    chunk_overlap=40
+)
+
+def chunk_text(text: str):
+    return splitter.split_text(text)
+
+def embed_chunks(chunks: list):
     embeddings = model.encode(chunks, show_progress_bar=False)
-    return chunks, np.array(embeddings).astype('float32')
+    return np.array(embeddings).astype('float32')
 
 def create_or_update_index(embeddings: np.ndarray, chunk_ids: list, existing_index=None):
     if embeddings.size == 0:

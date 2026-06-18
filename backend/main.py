@@ -9,7 +9,8 @@ from dotenv import load_dotenv
 import openai
 
 from extract import extract_text_from_pdf
-from retrieval import chunk_and_embed, create_or_update_index, search_index, load_index, save_index
+from retrieval import chunk_text, embed_chunks, create_or_update_index, search_index, load_index, save_index
+from section_parser import split_sections, classify_question
 
 from db.database import engine, SessionLocal
 from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage
@@ -86,11 +87,7 @@ async def list_projects(db: Session = Depends(get_db)):
 # ─── 2. RECONSTRUCTED UPLOAD ROUTE (SCOPED TO PROJECT) ────────────────
 
 @app.post("/upload/")
-async def upload_pdf(
-    project_id: int = Query(...), 
-    file: UploadFile = File(...), 
-    db: Session = Depends(get_db)
-):
+async def upload_pdf(project_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
     # Verify target project workspace container physically exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -115,19 +112,31 @@ async def upload_pdf(
         text = extract_text_from_pdf(contents)
         if not text or not text.strip():
             text = "Empty document context placeholder text."
-        
-        chunks, embeddings = chunk_and_embed(text)
-        if not chunks:
-            raise HTTPException(status_code=400, detail="Text splitting generated zero segments.")
-        
+
+        sections = split_sections(text)
+        print(sections.keys())
         stored_chunks_ids = []
-        for chunk_text in chunks:
-            chunk = Chunk(chunk_text=chunk_text, document_id=document.id)
-            db.add(chunk)
-            db.flush()  # Extract the newly minted sequential index ID primary key
-            stored_chunks_ids.append(chunk.id)
+        all_chunk_text = []
+
+        for section_name, section_text in sections.items():
+            chunks = chunk_text(section_text)
+            for idx, chunk_text_val in enumerate(chunks):
+                chunk = Chunk(chunk_text=chunk_text_val, document_id=document.id, section=section_name, chunk_index=idx)
+                db.add(chunk)
+                db.flush() 
+                stored_chunks_ids.append(chunk.id)
+                all_chunk_text.append(chunk_text_val)
         db.commit()
 
+        for section_name, section_text in sections.items():
+            if section_name == "abstract":
+                print(section_text)
+        
+        print(sections.get("abstract"))
+
+        print(db.query(Chunk).filter(Chunk.document_id == document.id).count())
+        embeddings = embed_chunks(all_chunk_text)
+             
         # Update the memory index pool and write safely to local binary tree storage
         app.state.index = create_or_update_index(embeddings, stored_chunks_ids, app.state.index)
         save_index(app.state.index)
@@ -136,6 +145,7 @@ async def upload_pdf(
 
     except Exception as e:
         db.rollback()
+        print(f"⚠️ Error uploading PDF: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Backend processing failure: {str(e)}")
 
 # ─── 3. RECONSTRUCTED INTERACTION COMPONENT (WITH HISTORY CONTEXTS) ──
@@ -169,30 +179,56 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     db.add(user_message_record)
     db.commit()
     print("User message saved")
+    print("Question:", question)
+
+    target_section = classify_question(question)
+    print("Target section:", target_section)
 
     # Query vector mapping index space
-    ranked_chunk_ids = search_index(index, question, k=5)
+    ranked_chunk_ids = search_index(index, question, k=15)
+    print("Ranked IDs:", ranked_chunk_ids[:5])
     if not ranked_chunk_ids:
+        print("No chunks found in index.")
         fallback_msg = "I cannot find specific details regarding that query in the currently retrieved document sections."
         assistant_record = ChatMessage(role="assistant", message=fallback_msg, session_id=chat_session.id)
         db.add(assistant_record)
         db.commit()
         return {"answer": fallback_msg, "sources": []}
-        
-    # Isolate relational database chunks belonging explicitly to the active project context container
-    raw_chunks = db.query(Chunk).join(Document).filter(
+    
+    query = db.query(Chunk).join(Document).filter(
         Chunk.id.in_(ranked_chunk_ids),
-        Document.project_id == project_id
-    ).all()
+        Document.project_id == project_id )
     
-    chunk_dict = {c.id: c for c in raw_chunks}
-    ordered_chunks = [chunk_dict[cid] for cid in ranked_chunk_ids if cid in chunk_dict]
-    
+    if target_section:
+        query = query.filter(Chunk.section == target_section)
+    raw_chunks = query.all()
+
+    used_fallback = False
+
+    if target_section and not raw_chunks:
+        raw_chunks = db.query(Chunk).join(Document).filter(
+            Document.project_id == project_id,
+            Chunk.section == target_section
+        ).all()
+        used_fallback = True
+
+    if used_fallback:
+        ordered_chunks = raw_chunks
+    else:
+        chunk_dict = {c.id: c for c in raw_chunks}
+        ordered_chunks = [chunk_dict[cid] for cid in ranked_chunk_ids if cid in chunk_dict]
+
+    print("Ordered Chunks:", len(ordered_chunks))
+    for c in ordered_chunks:
+        print("SECTION:", c.section)
+        print(c.chunk_text[:200])
+        print("-"*50)
+        
     if not ordered_chunks:
          fallback_msg = "I cannot find specific details regarding that query."
          db.add(ChatMessage(role="assistant", message=fallback_msg, session_id=chat_session.id))
          db.commit()
-         return {"answer": fallback_msg, "sources": []}
+         return {"answer": fallback_msg, "sources": []} 
 
     # Format text data payload blocks for the final LLM verification stage
     context_blocks = [f"[SOURCE_DOC: {c.document.filename}]\nContent:\n{c.chunk_text}" for c in ordered_chunks]
