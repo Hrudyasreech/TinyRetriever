@@ -20,14 +20,22 @@ class Document(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
+
     filename = Column(String, nullable=False)
     filepath = Column(String, nullable=False)
+
     title = Column(String, nullable=True)
     authors = Column(Text, nullable=True)
+    affiliations = Column(Text, nullable=True) 
     abstract = Column(Text, nullable=True)
+
+    doi = Column(String, nullable=True)
+    publisher = Column(String, nullable=True)
+    journal = Column(String, nullable=True)
+    published_year = Column(Integer, nullable=True)
+
     upload_date = Column(DateTime(timezone=True), server_default=func.now())
 
-    # ORM Relationship: Clean cascading deletes
     project = relationship("Project", back_populates="documents")
     chunks = relationship("Chunk", back_populates="document", cascade="all, delete-orphan")
 

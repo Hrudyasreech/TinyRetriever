@@ -1,7 +1,9 @@
 import fitz
 import re
 
-pdf = fitz.open(r"C:\Users\hrudy\Downloads\sensors-25-06629-v2.pdf")
+#pdf = fitz.open(r"C:\Users\hrudy\Downloads\sensors-25-06629-v2.pdf")
+#pdf = fitz.open(r"C:\Hrudya\Projects\TinyRetriever\sample3.pdf")
+pdf = fitz.open(r"C:\Hrudya\Projects\TinyRetriever\s4.pdf")
 text = ""
 for page in pdf:
     text += page.get_text()
@@ -126,9 +128,64 @@ def split_sections(text):
     return sections
 
 sections = split_sections(text)
-print(sections.keys())
 
+def extract_first_page_text(pdf):
+    if len(pdf) == 0:
+        return ""
 
+    first_page = pdf[0]
+    text = first_page.get_text()
+    pdf.close()
+    return text
 
+def extract_doi(text):
 
+    # Fix DOI broken across lines
+    text = re.sub(r'/\s+', '/', text)
+    # Convert newlines to spaces
+    text = text.replace("\n", " ")
+    match = re.search(
+        r'10\.\d{4,9}/[-._;()/:A-Za-z0-9]+',
+        text
+    )
+    if match:
+        return match.group(0)
 
+    return None
+
+first_page_text = extract_first_page_text(pdf)
+doi = extract_doi(first_page_text)
+print(doi)
+
+import requests
+
+def get_metadata_from_crossref(doi):
+    url = f"https://api.crossref.org/works/{doi}"
+
+    response = requests.get(url, timeout=10)
+
+    if response.status_code != 200:
+        return None
+
+    data = response.json()["message"]
+
+    title = data.get("title", [""])[0]
+
+    authors = []
+    for author in data.get("author", []):
+        given = author.get("given", "")
+        family = author.get("family", "")
+        authors.append(f"{given} {family}".strip())
+
+    return {
+        "title": title,
+        "authors": authors,
+        "doi": doi,
+        "publisher": data.get("publisher"),
+        "journal": data.get("container-title", [""])[0],
+        "published_year": data.get("published-print", {}).get("date-parts", [[None]])[0][0]
+    }
+
+metadata_s = get_metadata_from_crossref(doi)
+
+print(metadata_s)
