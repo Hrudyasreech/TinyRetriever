@@ -47,6 +47,7 @@ class Chunk(Base):
     # Cascade delete ensures that deleting a Document cleans up its associated chunks automatically
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), index=True, nullable=False)
     section = Column(String, nullable=True)
+    section_group = Column(String, nullable=True)
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=True)
     page_number = Column(Integer, nullable=True)

@@ -1,4 +1,10 @@
+from operator import methodcaller
+from os import system
 import re
+
+from networkx import relabel_gexf_graph
+from regex import P
+from sympy import intersecting_product
 SECTION_MARKERS = {
 
     "abstract": [
@@ -94,6 +100,35 @@ SECTION_MARKERS = {
     ]
 }
 
+SECTION_GROUPS = {
+    "abstract": ["abstract"],
+    "introduction": ["introduction"],
+    "background": [
+        "background",
+        "related_work",
+        "problem_statement"
+    ],
+    "literature_review": [
+        "literature_review"
+    ],
+    "methodology": [
+        "methodology",
+        "experimental_setup",
+        "system_design",
+        "implementation"
+    ],
+    "results": [
+        "results"
+    ],
+    "discussion": [
+        "discussion"
+    ],
+    "conclusion": [
+        "conclusion",
+        "future_work"
+    ]
+}
+
 def find_sections(text):
     matches = []
     for name, patterns in SECTION_MARKERS.items():
@@ -107,6 +142,8 @@ def find_sections(text):
 
 def split_sections(text):
     positions = find_sections(text)
+    if not positions:
+        return {"metadata": text}
     sections = {}
     sections["metadata"] = text[:positions[0][1]]
     for i in range(len(positions)):
@@ -141,3 +178,13 @@ def classify_question(question: str):
         return "references"
 
     return None
+
+def get_section_group(section_name):
+    for group, sections in SECTION_GROUPS.items():
+        if section_name in sections:
+            return group
+
+    return section_name
+
+def get_allowed_sections(section):
+    return SECTION_GROUPS.get(section, [section])

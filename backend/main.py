@@ -10,7 +10,7 @@ import openai
 
 from extract import extract_text_from_pdf, extract_doi, get_metadata_from_crossref, get_metadata_from_llm 
 from retrieval import chunk_text, embed_chunks, create_or_update_index, search_index, load_index, save_index
-from section_parser import split_sections, classify_question
+from section_parser import split_sections, classify_question, get_allowed_sections, get_section_group
 
 from db.database import engine, SessionLocal
 from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage
@@ -140,7 +140,7 @@ async def upload_pdf(project_id: int = Query(...), file: UploadFile = File(...),
         for section_name, section_text in sections.items():
             chunks = chunk_text(section_text)
             for idx, chunk_text_val in enumerate(chunks):
-                chunk = Chunk(chunk_text=chunk_text_val, document_id=document.id, section=section_name, chunk_index=idx)
+                chunk = Chunk(chunk_text=chunk_text_val, document_id=document.id, section=section_name, section_group=get_section_group(section_name), chunk_index=idx)
                 db.add(chunk)
                 db.flush() 
                 stored_chunks_ids.append(chunk.id)
@@ -193,7 +193,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     db.commit()
     print("User message saved")
     print("Question:", question)
-
+    
     target_section = classify_question(question)
     print("Target section:", target_section)
 
@@ -235,7 +235,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     
     # Avoid filtering out chunks if it's a general metadata request
     if target_section and target_section != "metadata":
-        query = query.filter(Chunk.section == target_section)
+        query = query.filter(Chunk.section_group == target_section)
     raw_chunks = query.all()
 
     used_fallback = False
@@ -243,8 +243,8 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     if target_section and not raw_chunks and target_section != "metadata":
         raw_chunks = db.query(Chunk).join(Document).filter(
             Document.project_id == project_id,
-            Chunk.section == target_section
-        ).all()
+            Chunk.section_group == target_section
+        ).limit(20).all()
         used_fallback = True
 
     if used_fallback:
