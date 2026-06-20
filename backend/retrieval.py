@@ -13,7 +13,7 @@ model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device=dev
 INDEX_PATH = "index.faiss" 
 
 splitter = RecursiveCharacterTextSplitter(
-    chunk_size=200,
+    chunk_size=500,
     chunk_overlap=40
 )
 
@@ -64,3 +64,27 @@ def load_index():
             print(f"⚠️ Failed to read FAISS index: {e}")
             return None
     return None
+
+def search_filtered_index(index, question: str, allowed_chunk_ids: list, k: int = 15):
+    if index is None or index.ntotal == 0:
+        return []
+
+    if not allowed_chunk_ids:
+        return []
+    question_embedding = model.encode([question]).astype("float32")
+    faiss.normalize_L2(question_embedding)
+
+    # Search wider pool first
+    scores, indices = index.search(question_embedding, k=min(1000,index.ntotal))
+    allowed_set = set(allowed_chunk_ids)
+    filtered_results = []
+
+    for idx in indices[0]:
+        if idx == -1:
+            continue
+        if int(idx) in allowed_set:
+            filtered_results.append(int(idx))
+        if len(filtered_results) >= k:
+            break
+
+    return filtered_results

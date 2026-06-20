@@ -9,7 +9,7 @@ from dotenv import load_dotenv
 import openai
 
 from extract import extract_text_from_pdf, extract_doi, get_metadata_from_crossref, get_metadata_from_llm 
-from retrieval import chunk_text, embed_chunks, create_or_update_index, search_index, load_index, save_index
+from retrieval import chunk_text, embed_chunks, create_or_update_index, search_index, load_index, save_index, search_filtered_index
 from section_parser import split_sections, classify_question, get_allowed_sections, get_section_group
 
 from db.database import engine, SessionLocal
@@ -163,6 +163,8 @@ async def upload_pdf(project_id: int = Query(...), file: UploadFile = File(...),
 
 # ─── 3. RECONSTRUCTED INTERACTION COMPONENT (WITH HISTORY CONTEXTS) ──
 
+from sqlalchemy.orm import joinedload
+
 @app.post("/ask/")
 async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     if not GROQ_API_KEY:
@@ -177,9 +179,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
         return {"answer": "No documents found in index storage.", "sources": []}
 
     # ─── GET OR CREATE CHAT SESSION WORKSPACE ───
-    chat_session = db.query(ChatSession).filter(
-        ChatSession.id == chat_id
-    ).first()
+    chat_session = db.query(ChatSession).filter(ChatSession.id == chat_id).first()
 
     if not chat_session:
         raise HTTPException(status_code=404, detail="Chat session not found.")
@@ -192,13 +192,14 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     db.add(user_message_record)
     db.commit()
     print("User message saved")
-    print("Question:", question)
     
     target_section = classify_question(question)
     print("Target section:", target_section)
 
-    # ─── 1. FETCH STRUCURED METADATA IF APPLICABLE ───
+    # ─── 1. FETCH STRUCTURED METADATA IF APPLICABLE ───
     metadata_context = ""
+    project_docs = []
+    
     if target_section == "metadata" or "metadata" in question.lower() or any(kw in question.lower() for kw in ["author", "doi", "publisher", "journal", "published year", "title"]):
         project_docs = db.query(Document).filter(Document.project_id == project_id).all()
         if project_docs:
@@ -216,8 +217,25 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
             metadata_context = "\n\n".join(meta_blocks)
 
     # Query vector mapping index space
-    ranked_chunk_ids = search_index(index, question, k=15)
-    print("Ranked IDs:", ranked_chunk_ids[:5])
+    if target_section and target_section != "metadata":
+        allowed_chunk_ids = [
+            row[0]
+            for row in (db.query(Chunk.id).join(Document)
+                .filter(
+                    Document.project_id == project_id,
+                    Chunk.section_group == target_section
+                )
+                .all())]
+
+        print(f"Section Group: {target_section} | Candidate Chunks: {len(allowed_chunk_ids)}")
+        
+        ranked_chunk_ids = search_filtered_index(index=index, question=question, allowed_chunk_ids=allowed_chunk_ids, k=15)
+        # --- ADDED TESTING DEBUG LINE ---
+        print(f"Retrieved {len(ranked_chunk_ids)} ranked chunks")
+    else:
+        ranked_chunk_ids = search_index(index=index, question=question, k=15)
+
+    print("Ranked IDs:", ranked_chunk_ids[:10])
     
     if not ranked_chunk_ids and not metadata_context:
         print("No chunks or metadata found in index.")
@@ -228,20 +246,18 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
         return {"answer": fallback_msg, "sources": []}
     
     # ─── 2. RETRIEVE CHUNKS FROM DATABASE ───
-    query = db.query(Chunk).join(Document).filter(
+    # CORRECTED COMMENT: Eagerly load related Document objects to avoid extra queries later
+    raw_chunks = (db.query(Chunk).options(joinedload(Chunk.document)).join(Document)
+    .filter(
         Chunk.id.in_(ranked_chunk_ids),
-        Document.project_id == project_id 
-    )
-    
-    # Avoid filtering out chunks if it's a general metadata request
-    if target_section and target_section != "metadata":
-        query = query.filter(Chunk.section_group == target_section)
-    raw_chunks = query.all()
+        Document.project_id == project_id
+    ).all())
 
     used_fallback = False
 
     if target_section and not raw_chunks and target_section != "metadata":
-        raw_chunks = db.query(Chunk).join(Document).filter(
+        # CORRECTED COMMENT: Eagerly load related Document objects to avoid extra queries later
+        raw_chunks = db.query(Chunk).options(joinedload(Chunk.document)).join(Document).filter(
             Document.project_id == project_id,
             Chunk.section_group == target_section
         ).limit(20).all()
@@ -276,38 +292,33 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
         completion = client.chat.completions.create(
             model="llama-3.1-8b-instant",  
             messages=[
-            {
-                "role": "system", 
-                "content": (
-                    "You are a helpful, clear, and friendly AI assistant reading from a user's uploaded documents.\n\n"
-                    "Core Rules:\n"
-                    "1. Answer the question using the facts provided in the context blocks (metadata records and raw text chunks).\n"
-                    "2. If the user asks for the 'objective', 'aim', or 'purpose' of the paper and it is not explicitly labeled, look closely at the Abstract, Introduction, or Methodology sections in the provided context. Formulate the objective based on what the authors state they are testing, developing, or investigating. Do not say you cannot find it if the goals are clearly implied by their methods or abstract summary.\n"
-                    "3. Speak in a normal, simple, everyday conversational tone. Avoid robotic jargon.\n"
-                    "4. If the provided context genuinely lacks any information, clues, or context to answer the question, only then state exactly: 'I cannot find specific details regarding that in the currently retrieved document sections.' Do not invent completely new facts outside the text."
-                )
-            },
-            {"role": "user", "content": f"Provided Context Data Blocks:\n{context_text}\n\nUser Question: {question}"}
-        ],
+                {
+                    "role": "system", 
+                    "content": (
+                        "You are a helpful, clear, and friendly AI assistant reading from a user's uploaded documents.\n\n"
+                        "Core Rules:\n"
+                        "1. Answer the question using the facts provided in the context blocks (metadata records and raw text chunks).\n"
+                        "2. If the user asks for the 'objective', 'aim', or 'purpose' of the paper and it is not explicitly labeled, look closely at the Abstract, Introduction, or Methodology sections in the provided context. Formulate the objective based on what the authors state they are testing, developing, or investigating.\n"
+                        "3. Speak in a normal, simple, everyday conversational tone. Avoid robotic jargon.\n"
+                        "4. If the provided context genuinely lacks any information, only then state exactly: 'I cannot find specific details regarding that in the currently retrieved document sections.'"
+                    )
+                },
+                {"role": "user", "content": f"Provided Context Data Blocks:\n{context_text}\n\nUser Question: {question}"}
+            ],
             temperature=0.3
         )
         
         answer = completion.choices[0].message.content
         
-        # Save assistant text generation directly down into SQLite chat logs array
         try:
-            print("Chat id:", chat_session.id)
-            print("answer length", len(answer))
             assistant_message_record = ChatMessage(
                 role="assistant",
                 message=answer,
                 session_id=chat_session.id
             )
-
             db.add(assistant_message_record)
-            db.commit() 
-            print("Chat assistant message saved")
-
+            db.commit()
+            print("Chat assistant message saved successfully")
         except Exception as e:
             db.rollback()
             print("CHAT SAVE ERROR:", e)
@@ -318,19 +329,17 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
             
         source_documents = list(set([c.document.filename for c in ordered_chunks if c.document.filename in context_text]))
         
-        # Include metadata-only source titles if no chunks were matched but context was fed
-        if metadata_context:
+        if metadata_context and project_docs:
             for doc in project_docs:
                 if doc.filename in context_text and doc.filename not in source_documents:
                     source_documents.append(doc.filename)
                     
-        print(answer)
-        print(source_documents)
         return {"answer": answer, "sources": source_documents}
 
     except Exception as e:
         print(f"Groq Integration Error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Pipeline inference failure: {str(e)}")
+    
 # ─── 4. SYNC FILE AND HISTORICAL CHAT LISTS FOR INDIVIDUAL PROJECTS ───
 
 @app.get("/documents")
