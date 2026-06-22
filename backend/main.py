@@ -72,7 +72,25 @@ async def create_project(project_data: ProjectCreate, db: Session = Depends(get_
         db.add(project)
         db.commit()
         db.refresh(project)
-        return project
+
+        chat = ChatSession(project_id=project.id, title="New Chat")
+        db.add(chat)
+        db.commit()
+        db.refresh(chat)
+        return {
+            "id": str(project.id),
+            "name": project.name,
+            "description": project.description or "",
+            "emoji": "📁",
+            "papers": [],
+            "chats": [
+                {
+                    "id": str(chat.id),
+                    "title": chat.title,
+                    "updated": "Just now",
+                    "messages": []
+                }
+            ]}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to generate project record: {str(e)}")
@@ -80,9 +98,61 @@ async def create_project(project_data: ProjectCreate, db: Session = Depends(get_
 @app.get("/projects/")
 async def list_projects(db: Session = Depends(get_db)):
     try:
-        return db.query(Project).all()
+        projects = db.query(Project).all()
+
+        return [
+            {
+                "id": str(p.id),
+                "name": p.name,
+                "description": p.description or "",
+                "emoji": "📁",
+                "papers": [
+                    {
+                        "id": str(d.id),
+                        "title": d.title or d.filename,
+                        "authors": d.authors.split(", ") if d.authors else ["Unknown Author"],
+                        "year": d.published_year or 0,
+                        "venue": d.journal or "Unknown Venue",
+                        "doi": d.doi or "Unknown",
+                        "keywords": [],
+                        "abstract": d.abstract or "",
+                        "citations": 0,
+                        "pages": 0,
+                        "status": "processed",
+                        "color": "oklch(0.62 0.13 220)",
+                    }
+                    for d in p.documents
+                ],
+
+                "chats": [
+                    {
+                        "id": str(c.id),
+                        "title": c.title or "New Chat",
+                        "messages": []
+                    }
+                    for c in p.chatsessions
+                ]
+            }
+            for p in projects 
+        ]
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to fetch workspace dashboard cards: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to fetch workspace dashboard cards: {str(e)}"
+        )
+
+@app.delete("/projects/{project_id}")
+async def delete_project(project_id: int, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(
+    Project.id == project_id
+    ).first()
+
+    if not project:
+        raise HTTPException(404)
+
+    db.delete(project)
+    db.commit()
 
 # ─── 2. RECONSTRUCTED UPLOAD ROUTE (SCOPED TO PROJECT) ────────────────
 
@@ -359,17 +429,47 @@ async def get_chat_history(project_id: int, chat_id: int, db: Session = Depends(
             ChatMessage.session_id == chat_id
         ).order_by(ChatMessage.timestamp.asc()).all()
         
-        return [{"role": m.role, "message": m.message} for m in history]
+        return [{"id": str(m.id), "role": m.role, "content": m.message, "timestamp": m.timestamp} for m in history]
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed loading log matrices: {str(e)}")
     
 @app.post("/projects/{project_id}/chats")
-async def create_chat(project_id: int,db: Session = Depends(get_db)):
-    chat = ChatSession(project_id=project_id, title="New Chat" )
+async def create_chat(project_id: int, db: Session = Depends(get_db)):
+    chat = ChatSession(
+        project_id=project_id,
+        title="New Chat"
+    )
+
     db.add(chat)
     db.commit()
     db.refresh(chat)
 
     return {
-        "chat_id": chat.id
+        "id": str(chat.id),
+        "title": chat.title,
+        "updated": "Just now",
+        "messages": []
     }
+
+@app.delete("/projects/{project_id}/chats/{chat_id}")
+async def delete_chat(
+    project_id: int,
+    chat_id: int,
+    db: Session = Depends(get_db)
+):
+    chat = (
+        db.query(ChatSession)
+        .filter(
+            ChatSession.id == chat_id,
+            ChatSession.project_id == project_id
+        )
+        .first()
+    )
+
+    if not chat:
+        raise HTTPException(status_code=404, detail="Chat not found")
+
+    db.delete(chat)
+    db.commit()
+
+    return {"message": "Chat deleted"}
