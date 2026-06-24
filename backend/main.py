@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from dotenv import load_dotenv
 import openai
 
@@ -64,6 +65,7 @@ class QuestionRequest(BaseModel):
     question: str
     project_id: int
     chat_id: int  # incoming unique dynamic browser tracking UUID string
+    selected_paper_ids: list[int] = []
 
 # ─── 1. NEW: PROJECT ARCHITECTURE WORKSPACE ENDPOINTS ─────────────────
 
@@ -248,6 +250,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     question = request.question
     project_id = request.project_id
     chat_id = request.chat_id
+    selected_paper_ids = request.selected_paper_ids
     index = app.state.index
     
     if index is None or index.ntotal == 0:
@@ -267,6 +270,17 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     db.add(user_message_record)
     db.commit()
     print("User message saved")
+    print("Selected Papers:", selected_paper_ids)
+
+    if selected_paper_ids:
+        document_filter = and_(
+            Document.project_id == project_id,
+            Document.id.in_(selected_paper_ids)
+        )
+    else:
+        document_filter = (
+            Document.project_id == project_id
+    )
     
     target_section = classify_question(question)
     print("Target section:", target_section)
@@ -279,7 +293,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     project_docs = []
     
     if target_section == "metadata" or "metadata" in question.lower() or any(kw in question.lower() for kw in ["author", "doi", "publisher", "journal", "published year", "title"]):
-        project_docs = db.query(Document).filter(Document.project_id == project_id).all()
+        project_docs = db.query(Document).filter(document_filter).all()
         if project_docs:
             meta_blocks = []
             for doc in project_docs:
@@ -300,7 +314,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
             row[0]
             for row in (db.query(Chunk.id).join(Document)
                 .filter(
-                    Document.project_id == project_id,
+                    document_filter,
                     Chunk.section_group == target_section
                 )
                 .all())]
@@ -334,7 +348,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     raw_chunks = (db.query(Chunk).options(joinedload(Chunk.document)).join(Document)
     .filter(
         Chunk.id.in_(ranked_chunk_ids),
-        Document.project_id == project_id
+        document_filter
     ).all())
 
     used_fallback = False
@@ -342,7 +356,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     if target_section and not raw_chunks and target_section != "metadata":
         # CORRECTED COMMENT: Eagerly load related Document objects to avoid extra queries later
         raw_chunks = db.query(Chunk).options(joinedload(Chunk.document)).join(Document).filter(
-            Document.project_id == project_id,
+            document_filter,
             Chunk.section_group == target_section
         ).limit(20).all()
         used_fallback = True

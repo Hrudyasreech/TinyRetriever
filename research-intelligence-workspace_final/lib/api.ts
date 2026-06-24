@@ -53,7 +53,8 @@ export async function deleteProject(
 export async function askQuestion(
   question: string,
   projectId: number | string,
-  chatId: number | string
+  chatId: number | string,
+  activePaperIds: string[]
 ) {
   const response = await fetch("http://127.0.0.1:8000/ask/", {
     method: "POST",
@@ -64,6 +65,7 @@ export async function askQuestion(
       question,
       project_id: Number(projectId),
       chat_id: Number(chatId),
+      selected_paper_ids : activePaperIds
     }),
   })
 

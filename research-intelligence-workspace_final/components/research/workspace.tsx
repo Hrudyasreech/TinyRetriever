@@ -290,7 +290,7 @@ async function handleNewProject() {
     appendMessages(activeChat!.id, [userMsg])
     try {
       const result = await askQuestion(
-        text,activeProject!.id, activeChat!.id)
+        text,activeProject!.id, activeChat!.id, activePaperIds)
       const assistantMsg: Message = {
        id: nextId(),role: "assistant",content: result.answer,}
       appendMessages(activeChat!.id, [assistantMsg])
