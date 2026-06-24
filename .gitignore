@@ -10,6 +10,10 @@
 # Database
 *.db
 *.pdf
+#vector indices
+storage/
+bm25_index/
+*.pkl
 
 # FAISS indexes
 *.faiss

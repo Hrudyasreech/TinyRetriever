@@ -11,6 +11,7 @@ import openai
 from extract import extract_text_from_pdf, extract_doi, get_metadata_from_crossref, get_metadata_from_llm 
 from retrieval import chunk_text, embed_chunks, create_or_update_index, search_index, load_index, save_index, search_filtered_index
 from section_parser import split_sections, classify_question, get_allowed_sections, get_section_group
+from bm25_retrieval import build_bm25_index, search_bm25_index, rebuild_bm25, save_bm25, load_bm25
 
 from db.database import engine, SessionLocal
 from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage
@@ -26,6 +27,7 @@ if not GROQ_API_KEY:
 async def lifespan(app: FastAPI):
     # Loads the global vector matrix search state on startup
     app.state.index = load_index()
+    app.state.bm25 = load_bm25()
     print("🚀 FAISS Global Vector Index initialized successfully.")
     yield
 
@@ -217,12 +219,15 @@ async def upload_pdf(project_id: int = Query(...), file: UploadFile = File(...),
                 all_chunk_text.append(chunk_text_val)
         db.commit()
 
-        print(db.query(Chunk).filter(Chunk.document_id == document.id).count())
         embeddings = embed_chunks(all_chunk_text)
+        all_chunks = db.query(Chunk).all()
+        build_bm25_index(all_chunks)
              
         # Update the memory index pool and write safely to local binary tree storage
         app.state.index = create_or_update_index(embeddings, stored_chunks_ids, app.state.index)
         save_index(app.state.index)
+        rebuild_bm25(db)
+        print("Building BM25 from", len(all_chunks), "chunks")
         
         return JSONResponse(content={"message": "PDF uploaded and appended to workspace index."})
 
@@ -266,6 +271,9 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     target_section = classify_question(question)
     print("Target section:", target_section)
 
+    bm25_chunk_ids = search_bm25_index(question, k=15)
+    print("BM25 IDs:", bm25_chunk_ids[:10])
+
     # ─── 1. FETCH STRUCTURED METADATA IF APPLICABLE ───
     metadata_context = ""
     project_docs = []
@@ -300,12 +308,18 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
         print(f"Section Group: {target_section} | Candidate Chunks: {len(allowed_chunk_ids)}")
         
         ranked_chunk_ids = search_filtered_index(index=index, question=question, allowed_chunk_ids=allowed_chunk_ids, k=15)
-        # --- ADDED TESTING DEBUG LINE ---
+        bm25_chunk_ids = [cid for cid in bm25_chunk_ids if cid in allowed_chunk_ids]
         print(f"Retrieved {len(ranked_chunk_ids)} ranked chunks")
     else:
         ranked_chunk_ids = search_index(index=index, question=question, k=15)
 
     print("Ranked IDs:", ranked_chunk_ids[:10])
+    print("FAISS IDs:", len(ranked_chunk_ids))
+    print("BM25 IDs:", len(bm25_chunk_ids))
+    
+    for cid in bm25_chunk_ids:
+        if cid not in ranked_chunk_ids:
+            ranked_chunk_ids.append(cid)
     
     if not ranked_chunk_ids and not metadata_context:
         print("No chunks or metadata found in index.")

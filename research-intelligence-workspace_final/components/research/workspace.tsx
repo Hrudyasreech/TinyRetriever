@@ -437,6 +437,7 @@ async function handleDeleteProject(
         <div className="hidden xl:block">
           <ContextPanel
             papers={activeProject.papers}
+            projectId={activeProjectId}
             activePaperIds={activePaperIds}
             onToggleActive={toggleActivePaper}
             onAction={handleAction}
@@ -473,6 +474,7 @@ async function handleDeleteProject(
       <Drawer open={rightOpen} side="right" onClose={() => setRightOpen(false)}>
         <ContextPanel
           papers={activeProject.papers}
+          projectId={activeProjectId}
           activePaperIds={activePaperIds}
           onToggleActive={toggleActivePaper}
           onAction={(label) => {

@@ -42,6 +42,7 @@ const actionIcons: Record<string, LucideIcon> = {
 
 type Props = {
   papers: Paper[]
+  projectId: string
   onAction: (label: string) => void
   onClose?: () => void
   /** ids of papers active for retrieval / question answering */
@@ -53,6 +54,7 @@ type Props = {
 
 export function ContextPanel({
   papers,
+  projectId,
   onAction,
   onClose,
   activePaperIds,
@@ -80,7 +82,7 @@ export function ContextPanel({
 
       try {
         const response = await fetch(
-          "http://127.0.0.1:8000/upload/?project_id=1",
+          `http://127.0.0.1:8000/upload/?project_id=${projectId}`,
           {
             method: "POST",
             body: formData,
