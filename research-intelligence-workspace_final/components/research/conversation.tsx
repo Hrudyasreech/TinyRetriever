@@ -17,6 +17,8 @@ import { useEffect, useRef, useState } from "react"
 import type { Chat, Message, Paper } from "@/lib/research-data"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 
 const cardKindMeta: Record<
   NonNullable<Message["card"]>["kind"],
@@ -200,6 +202,26 @@ function AssistantMessage({
   const meta = message.card ? cardKindMeta[message.card.kind] : null
   const Icon = meta?.icon ?? Sparkles
 
+  let comparison = undefined
+  if (message.message_type === "compare") {
+    const table = message.content.comparison_table
+
+    const columns = Object.keys(table[0]).filter(
+      (key) => key !== "Attribute"
+    )
+
+    comparison = {
+      columns,
+      rows: table.map((row: any) => ({
+        label: row.Attribute,
+        values: columns.map((col) => row[col] ?? "Not Reported"),
+      })),
+      similarities: message.content.similarities,
+      differences: message.content.differences,
+      key_takeaways: message.content.key_takeaways,
+    }
+  }
+
   return (
     <div className="flex gap-3">
       <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
@@ -217,9 +239,15 @@ function AssistantMessage({
         ) : null}
 
         <div className="px-4 py-3.5">
-          <p className="text-sm leading-relaxed text-foreground/90">{message.content}</p>
-
-          {message.comparison ? <ComparisonTable comparison={message.comparison} /> : null}
+          {message.message_type === "compare" && comparison ? (
+            <ComparisonTable comparison={comparison} />
+          ) : (
+            <div className="prose prose-sm max-w-none dark:prose-invert">
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {message.content}
+              </ReactMarkdown>
+            </div>
+          )}
 
           {message.citations?.length ? (
             <div className="mt-4 space-y-2">
@@ -227,8 +255,10 @@ function AssistantMessage({
                 <Quote className="size-3" />
                 Sources
               </p>
+
               {message.citations.map((c, i) => {
                 const paper = paperById(c.paperId)
+
                 return (
                   <div
                     key={i}
@@ -239,14 +269,19 @@ function AssistantMessage({
                         className="size-2 shrink-0 rounded-full"
                         style={{ background: paper?.color }}
                       />
-                      <span className="truncate text-xs font-semibold">{paper?.title}</span>
+                      <span className="truncate text-xs font-semibold">
+                        {paper?.title}
+                      </span>
+
                       <span className="ml-auto shrink-0 rounded-md bg-accent px-1.5 py-0.5 text-[10px] font-medium text-accent-foreground">
                         p.{c.page}
                       </span>
                     </div>
+
                     <p className="mt-1.5 border-l-2 border-primary/40 pl-2.5 text-xs italic leading-relaxed text-muted-foreground">
-                      “{c.snippet}”
+                      "{c.snippet}"
                     </p>
+
                     <p className="mt-1 text-[11px] text-muted-foreground">
                       {c.label} · {c.section}
                     </p>
@@ -267,31 +302,80 @@ function ComparisonTable({
   comparison: NonNullable<Message["comparison"]>
 }) {
   return (
-    <div className="mt-4 overflow-x-auto rounded-xl border border-border">
-      <table className="w-full border-collapse text-left text-xs">
-        <thead>
-          <tr className="bg-secondary/60">
-            <th className="px-3 py-2 font-semibold text-muted-foreground">Dimension</th>
-            {comparison.columns.map((col) => (
-              <th key={col} className="px-3 py-2 font-semibold">
-                {col}
+    <div className="mt-4 space-y-6">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full border-collapse text-left text-[11px]">
+          <thead>
+            <tr className="bg-secondary/60">
+              <th className="px-3 py-2 font-semibold text-muted-foreground">
+                Dimension
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {comparison.rows.map((row) => (
-            <tr key={row.label} className="border-t border-border align-top">
-              <td className="px-3 py-2 font-medium text-muted-foreground">{row.label}</td>
-              {row.values.map((v, i) => (
-                <td key={i} className="px-3 py-2 leading-relaxed text-foreground/90">
-                  {v}
-                </td>
+
+              {comparison.columns.map((col) => (
+                <th key={col} className="px-3 py-2 font-semibold">
+                  {col}
+                </th>
               ))}
             </tr>
+          </thead>
+
+          <tbody>
+            {comparison.rows.map((row) => (
+              <tr
+                key={row.label}
+                className="border-t border-border align-top"
+              >
+                <td className="w-40 px-3 py-2 font-medium text-muted-foreground">
+                  {row.label}
+                </td>
+
+                {row.values.map((v, i) => (
+                  <td
+                    key={i}
+                    className="px-3 py-2 leading-relaxed text-foreground/90"
+                  >
+                    {v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">
+          Key Takeaways
+        </h3>
+
+        <p className="text-sm leading-relaxed text-muted-foreground">
+          {comparison.key_takeaways}
+        </p>
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">
+          Similarities
+        </h3>
+
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          {comparison.similarities.map((item, i) => (
+            <li key={i}>{item}</li>
           ))}
-        </tbody>
-      </table>
+        </ul>
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-semibold">
+          Differences
+        </h3>
+
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          {comparison.differences.map((item, i) => (
+            <li key={i}>{item}</li>
+          ))}
+        </ul>
+      </div>
     </div>
   )
 }

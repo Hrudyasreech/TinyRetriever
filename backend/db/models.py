@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, JSON
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -61,7 +61,8 @@ class ChatMessage(Base):
     
     id = Column(Integer, primary_key=True, index=True)
     role = Column(String, nullable=False)  # e.g., 'user', 'assistant', 'system'
-    message = Column(Text, nullable=False)
+    message_type = Column(String, nullable=False)  
+    message = Column(JSON, nullable=False)
     timestamp = Column(DateTime(timezone=True), server_default=func.now(),index=True)
     session_id = Column(Integer, ForeignKey("chat_sessions.id", ondelete="CASCADE"), index=True, nullable=False)
     session = relationship("ChatSession", back_populates="messages")

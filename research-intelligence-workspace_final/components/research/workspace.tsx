@@ -1,13 +1,14 @@
 "use client"
 
 import { useMemo, useState, useEffect } from "react"
-import {getProjects, askQuestion, getChatHistory, createChat, deleteChat, createProject, deleteProject} from "@/lib/api"
-import { projects as initialProjects, type Project, type Message, type Chat, type Paper } from "@/lib/research-data"
+import {getProjects, askQuestion, getChatHistory, createChat, deleteChat, createProject, deleteProject, deletePaper, researchAction} from "@/lib/api"
+import { projects as initialProjects, type Project, type Message, type Chat, type Paper, quickActions } from "@/lib/research-data"
 import { Sidebar } from "./sidebar"
 import { Conversation } from "./conversation"
 import { ContextPanel } from "./context-panel"
 import { HomeDashboard } from "./home-dashboard"
 import { PaperSelectModal } from "./paper-select-modal"
+import { ResearchActionModal } from "./research-action-modal"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { PanelRightOpen } from "lucide-react"
@@ -15,81 +16,6 @@ import { CreateProjectModal } from "./create-project-modal"
 
 let idCounter = 1000
 const nextId = () => `gen-${idCounter++}`
-
-function buildAssistantReply(prompt: string, papers: Paper[]): Message {
-  const lower = prompt.toLowerCase()
-  const pool = papers.length ? papers : []
-  const cite = (i: number) => {
-    const p = pool[i % pool.length]
-    return {
-      paperId: p.id,
-      label: `${p.title.split(":")[0]} §${(i % 4) + 1}`,
-      snippet: p.abstract.slice(0, 120) + "…",
-      section: "Source excerpt",
-      page: (i % 9) + 1,
-    }
-  }
-
-  if (!pool.length) {
-    return {
-      id: nextId(),
-      role: "assistant",
-      card: { title: "No active sources", kind: "synthesis" },
-      content:
-        "No papers are currently active for retrieval. Activate at least one paper in the Research Context panel so I can ground my answer in your sources.",
-    }
-  }
-
-  if (lower.includes("compare")) {
-    const cols = pool.slice(0, 4)
-    return {
-      id: nextId(),
-      role: "assistant",
-      card: { title: "Cross-Paper Comparison", kind: "comparison" },
-      content: `Here is a structured comparison across the ${cols.length} selected papers. Each column maps to a paper, with cited source sections supporting every cell.`,
-      comparison: {
-        columns: cols.map((p) => p.title.split(":")[0].split(" ").slice(0, 2).join(" ")),
-        rows: [
-          { label: "Approach", values: cols.map((p) => p.keywords[0] ?? "—") },
-          { label: "Year", values: cols.map((p) => String(p.year)) },
-          { label: "Venue", values: cols.map((p) => p.venue) },
-        ],
-      },
-      citations: pool.length > 1 ? [cite(0), cite(1)] : [cite(0)],
-    }
-  }
-
-  if (lower.includes("literature review") || lower.includes("review")) {
-    return {
-      id: nextId(),
-      role: "assistant",
-      card: { title: "Literature Review Draft", kind: "review" },
-      content:
-        "Recent work in this area converges on a shared goal of efficiency without sacrificing accuracy. Building on foundational methods, subsequent papers refine the trade-off between computational cost and representational fidelity, collectively establishing a clear trajectory for the field.",
-      citations: pool.length > 1 ? [cite(0), cite(1)] : [cite(0)],
-    }
-  }
-
-  if (lower.includes("summar") || lower.includes("contribution")) {
-    return {
-      id: nextId(),
-      role: "assistant",
-      card: { title: "Summary & Contributions", kind: "summary" },
-      content:
-        "The core contributions across these papers center on novel mechanisms that improve scalability, supported by strong empirical results on standard benchmarks. Each work isolates a specific bottleneck and proposes a targeted, reproducible solution.",
-      citations: [cite(0)],
-    }
-  }
-
-  return {
-    id: nextId(),
-    role: "assistant",
-    card: { title: "Research Insight", kind: "synthesis" },
-    content:
-      "Based on your active sources, here is a synthesized answer grounded in the relevant sections. The evidence points to a consistent pattern across the collection, with the strongest support coming from the most recent works.",
-    citations: pool.length > 1 ? [cite(0), cite(1)] : [cite(0)],
-  }
-}
 
 export function Workspace() {
   const [view, setView] = useState<"dashboard" | "workspace">("dashboard")
@@ -110,8 +36,11 @@ export function Workspace() {
     }
     loadProjects()
   }, [])
+  type QuickAction = (typeof quickActions)[number]
   const [showProjectModal, setShowProjectModal] = useState(false)
   const [projectName, setProjectName] = useState("")
+  const [selectedAction, setSelectedAction] = useState<QuickAction | null>(null)
+  const [modalOpen, setModalOpen] = useState(false)
   const [projectDescription, setProjectDescription] = useState("")
   const [activeProjectId, setActiveProjectId] = useState("")
   const [activeChatId, setActiveChatId] = useState("")
@@ -133,6 +62,7 @@ export function Workspace() {
     if (!activeProject) return null;
      return activeProject.chats.find((c) => c.id === activeChatId) ?? activeProject.chats[0];
   }, [activeProject, activeChatId]);
+
 
   useEffect(() => {
   console.log("ACTIVE PROJECT:", activeProjectId)
@@ -160,6 +90,7 @@ export function Workspace() {
                         messages: history.map((m: any) => ({
                           id: String(m.id),
                           role: m.role,
+                          message_type: m.message_type,
                           content: m.content, // IMPORTANT
                         })),
                       }
@@ -237,9 +168,13 @@ async function handleNewProject() {
       </div>
     )
   }
-  const activePaperIds = activeByProject[activeProjectId] ?? activeProject.papers.map((p) => p.id)
-  const activePapers = activeProject.papers.filter((p) => activePaperIds.includes(p.id))
+  const activePaperIds = activeByProject[activeProjectId] ?? activeProject.papers.map((p) => p.id) 
+  const activePapers = activeProject.papers.filter((p) => activePaperIds.includes(p.id)) 
   const retrievalPapers = activePapers.length ? activePapers : activeProject.papers
+  const handleResearchAction = (action: QuickAction) => {
+  setSelectedAction(action)
+  setModalOpen(true)
+}
 
   function openProject(id: string) {
     selectProject(id)
@@ -286,41 +221,21 @@ async function handleNewProject() {
     const userMsg: Message = {
     id: nextId(),
     role: "user",
+    message_type: "chat",
     content: text,}
     appendMessages(activeChat!.id, [userMsg])
     try {
       const result = await askQuestion(
         text,activeProject!.id, activeChat!.id, activePaperIds)
       const assistantMsg: Message = {
-       id: nextId(),role: "assistant",content: result.answer,}
+       id: nextId(),role: "assistant",message_type: "chat",content: result.answer,}
+      console.log(typeof result.answer)
       appendMessages(activeChat!.id, [assistantMsg])
       console.log("ASK RESULT", result)
 
       }catch (error) {
     console.error(error)
    }
-  }
-
-  // Quick actions: comparisons open the paper-selection modal first
-  function handleAction(label: string) {
-    if (label.toLowerCase().startsWith("compare")) {
-      setCompareAction(label)
-      return
-    }
-    handleSend(label)
-  }
-
-  function handleConfirmCompare(selectedIds: string[]) {
-    const label = compareAction ?? "Compare Papers"
-    setCompareAction(null)
-    const selectedPapers = activeProject!.papers.filter((p) => selectedIds.includes(p.id))
-    const userMsg: Message = {
-      id: nextId(),
-      role: "user",
-      content: `${label} — ${selectedPapers.map((p) => p.title.split(":")[0]).join(", ")}`,
-    }
-    const reply = buildAssistantReply(label, selectedPapers)
-    appendMessages(activeChat!.id, [userMsg, reply])
   }
 
   async function handleNewChat() {
@@ -369,6 +284,80 @@ async function handleDeleteProject(
     prev.filter((p) => p.id !== projectId)
   )
 }
+
+async function handleGenerateResearchAction(
+  selectedPaperIds: string[],
+  instructions: string
+) {
+  if (!selectedAction || !activeProject || !activeChat) return
+
+  try {
+    const result = await researchAction(
+      activeProject.id,
+      selectedAction.endpoint,
+      activeChat.id,
+      selectedPaperIds,
+      selectedAction.defaultQuestion,
+      instructions
+    )
+
+    const assistantMsg: Message = {
+      id: nextId(),
+      role: "assistant",
+      message_type: result.message_type,
+      content: result.message,
+      timestamp: new Date().toISOString(),
+    }
+
+    appendMessages(activeChat.id, [assistantMsg])
+
+    setModalOpen(false)
+  } catch (error) {
+    console.error(error)
+    alert("Generation failed")
+  }
+}
+
+
+async function handleDeletePaper(
+  paperId: string
+) {
+  try {
+    await deletePaper(
+      activeProjectId,
+      paperId
+    )
+
+    setProjects((prev) =>
+      prev.map((project) =>
+        project.id !== activeProjectId
+          ? project
+          : {
+              ...project,
+              papers: project.papers.filter(
+                (p) => p.id !== paperId
+              ),
+            }
+      )
+    )
+
+    setActiveByProject((prev) => {
+      const current =
+        prev[activeProjectId] ??
+        activeProject!.papers.map((p) => p.id)
+
+      return {
+        ...prev,
+        [activeProjectId]: current.filter(
+          (x) => x !== paperId
+        ),
+      }
+    })
+  } catch (error) {
+    console.error(error)
+  }
+}
+  
 
   if (view === "dashboard") {
   return (
@@ -440,8 +429,10 @@ async function handleDeleteProject(
             projectId={activeProjectId}
             activePaperIds={activePaperIds}
             onToggleActive={toggleActivePaper}
-            onAction={handleAction}
+            onAction={handleResearchAction} // this is the problem
+
             onCollapse={() => setRightCollapsed(true)}
+            onDeletePaper={handleDeletePaper}
           />
         </div>
       )}
@@ -477,11 +468,9 @@ async function handleDeleteProject(
           projectId={activeProjectId}
           activePaperIds={activePaperIds}
           onToggleActive={toggleActivePaper}
-          onAction={(label) => {
-            handleAction(label)
-            setRightOpen(false)
-          }}
+          onAction={handleResearchAction}
           onClose={() => setRightOpen(false)}
+          onDeletePaper={handleDeletePaper}
         />
       </Drawer>
 
@@ -492,8 +481,17 @@ async function handleDeleteProject(
         papers={activeProject.papers}
         defaultSelectedIds={activePaperIds}
         onCancel={() => setCompareAction(null)}
-        onConfirm={handleConfirmCompare}
       />
+      
+      <ResearchActionModal
+        open={modalOpen}
+        action={selectedAction}
+        papers={activeProject?.papers ?? []}
+        selectedPaperIds={activeByProject[activeProjectId] ?? []}
+        onClose={() => setModalOpen(false)}
+        onGenerate={handleGenerateResearchAction}
+      />
+
     </div>
   )
 }

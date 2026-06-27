@@ -22,6 +22,7 @@ import {
   Check,
   PanelRightClose,
   type LucideIcon,
+  Trash2,
 } from "lucide-react"
 import { useState, useRef } from "react"
 import type { Paper } from "@/lib/research-data"
@@ -39,17 +40,19 @@ const actionIcons: Record<string, LucideIcon> = {
   AlignLeft,
   Sparkles,
 }
+type QuickAction = (typeof quickActions)[number]
 
 type Props = {
   papers: Paper[]
   projectId: string
-  onAction: (label: string) => void
+  onAction: (action: QuickAction) => void
   onClose?: () => void
   /** ids of papers active for retrieval / question answering */
   activePaperIds: string[]
   onToggleActive: (id: string) => void
   /** collapse the panel on desktop */
   onCollapse?: () => void
+  onDeletePaper: (id: string) => void
 }
 
 export function ContextPanel({
@@ -60,6 +63,7 @@ export function ContextPanel({
   activePaperIds,
   onToggleActive,
   onCollapse,
+  onDeletePaper,
 }: Props) {
   const [selectedId, setSelectedId] = useState(papers[0]?.id)
   const selected = papers.find((p) => p.id === selectedId) ?? papers[0]
@@ -207,6 +211,15 @@ export function ContextPanel({
                       <Loader2 className="mt-1 size-3.5 shrink-0 animate-spin text-muted-foreground" />
                     ) : null}
                   </button>
+                  <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDeletePaper(p.id)
+                  }}
+                  className="mt-1 shrink-0 text-muted-foreground hover:text-destructive"
+                >
+                  <Trash2 className="size-4" />
+                </button>
                 </div>
               )
             })}
@@ -289,17 +302,21 @@ export function ContextPanel({
 
         {/* Quick actions */}
         <Section title="Quick Research Actions">
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {quickActions.map((a) => {
               const Icon = actionIcons[a.icon] ?? Sparkles
+
               return (
                 <button
                   key={a.id}
-                  onClick={() => onAction(a.label)}
-                  className="flex flex-col items-start gap-2 rounded-xl border border-border bg-card p-2.5 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent"
+                  onClick={() => onAction(a)}
+                  className="flex items-center gap-3 rounded-xl border border-border bg-card p-3 text-left shadow-sm transition-colors hover:border-primary/40 hover:bg-accent"
                 >
-                  <Icon className="size-4 text-primary" />
-                  <span className="text-[11px] font-medium leading-tight">{a.label}</span>
+                  <Icon className="size-5 text-primary" />
+
+                  <span className="text-sm font-medium">
+                    {a.label}
+                  </span>
                 </button>
               )
             })}

@@ -13,7 +13,7 @@ type Props = {
   /** papers active for retrieval, used as the default selection */
   defaultSelectedIds: string[]
   onCancel: () => void
-  onConfirm: (selectedIds: string[]) => void
+
 }
 
 export function PaperSelectModal({
@@ -22,7 +22,6 @@ export function PaperSelectModal({
   papers,
   defaultSelectedIds,
   onCancel,
-  onConfirm,
 }: Props) {
   const [selected, setSelected] = useState<string[]>(defaultSelectedIds)
 
@@ -123,10 +122,6 @@ export function PaperSelectModal({
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={onCancel}>
               Cancel
-            </Button>
-            <Button size="sm" disabled={!canCompare} onClick={() => onConfirm(selected)} className="gap-1.5">
-              <GitCompare className="size-3.5" />
-              Compare {selected.length}
             </Button>
           </div>
         </div>

@@ -1,3 +1,5 @@
+import { quickActions } from "./research-data"
+
 const API_BASE_URL = "http://127.0.0.1:8000"
 
 export async function createProject(
@@ -122,4 +124,49 @@ export async function deleteChat(
   }
 
   return response.json()
+}
+
+export async function deletePaper(
+  projectId: string,
+  documentId: string
+) {
+  const response = await fetch(
+    `http://127.0.0.1:8000/projects/${projectId}/documents/${documentId}`,
+    {
+      method: "DELETE"
+    }
+  )
+
+  return response.json()
+}
+
+export async function researchAction(
+  projectId: string,
+  endpoint: string,
+  chatId: string,
+  selectedPaperIds: string[],
+  question: string,
+  instructions: string
+) {
+  const response = await fetch(
+    `http://127.0.0.1:8000/projects/${projectId}/${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        chat_id: Number(chatId),
+        selected_paper_ids: selectedPaperIds.map(Number),
+        question,
+        instructions,
+      }),
+    }
+  )
+
+  if (!response.ok) {
+    throw new Error("Failed to generate response")
+  }
+
+  return await response.json()
 }

@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer 
+from db.models import Chunk
 
 
 # Auto-detect best hardware acceleration backend
@@ -88,3 +89,13 @@ def search_filtered_index(index, question: str, allowed_chunk_ids: list, k: int 
             break
 
     return filtered_results
+
+def rebuild_faiss(db):
+    all_chunks = db.query(Chunk).all()
+    if not all_chunks:
+        return None
+    chunk_texts = [chunk.chunk_text for chunk in all_chunks]
+    chunk_ids = [chunk.id for chunk in all_chunks]
+    embeddings = embed_chunks(chunk_texts)
+    index = create_or_update_index(embeddings, chunk_ids, existing_index=None)
+    return index
