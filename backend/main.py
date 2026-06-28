@@ -1,4 +1,5 @@
 import os
+from uuid import UUID
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
@@ -18,7 +19,7 @@ from markdown_builder import comparison_to_markdown
 from retrieval_config import COMPARE_SECTIONS, SUMMARY_SECTIONS, LITERATURE_REVIEW_SECTIONS
 
 from db.database import engine, SessionLocal
-from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage
+from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage, User
 
 # 1. Initialize environment properties
 load_dotenv()
@@ -59,7 +60,7 @@ def get_db():
     finally:
         db.close()
 
-def chat_session_exists(chat_id: int, project_id: int, db: Session = Depends(get_db)):
+def validate_chat_session(chat_id: UUID, project_id: UUID, db: Session = Depends(get_db)):
     chat_session = db.query(ChatSession).filter(ChatSession.id == chat_id).first()
     if not chat_session:
         raise HTTPException(status_code=404, detail="Chat session not found")
@@ -73,14 +74,14 @@ class ProjectCreate(BaseModel):
 
 class QuestionRequest(BaseModel):
     question: str
-    project_id: int
-    chat_id: int  # incoming unique dynamic browser tracking UUID string
-    selected_paper_ids: list[int] = []
-    instructions: str | None = None 
+    project_id: UUID
+    chat_id: UUID  # incoming unique dynamic browser tracking UUID string
+    selected_paper_ids: list[UUID] = []
+    instructions: str | None = None
 
 class AnalysisRequest(BaseModel):
-    chat_id: int  # incoming unique dynamic browser tracking UUID string
-    selected_paper_ids: list[int] 
+    chat_id: UUID  # incoming unique dynamic browser tracking UUID string
+    selected_paper_ids: list[UUID]
     instructions: str | None = None
     question: str 
 
@@ -90,11 +91,28 @@ class AnalysisRequest(BaseModel):
 @app.post("/projects/")
 async def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
     try:
-        project = Project(name=project_data.name, description=project_data.description)
+        user = db.query(User).first()
+
+        if not user:
+                user = User(
+                email="developer@example.com",
+                name="Developer"
+            )
+
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+        project = Project(
+            name=project_data.name,
+            description=project_data.description,
+            user_id=user.id
+        )
+
         db.add(project)
         db.commit()
         db.refresh(project)
-
+        
         chat = ChatSession(project_id=project.id, title="New Chat")
         db.add(chat)
         db.commit()
@@ -165,7 +183,7 @@ async def list_projects(db: Session = Depends(get_db)):
         )
 
 @app.delete("/projects/{project_id}")
-async def delete_project(project_id: int, db: Session = Depends(get_db)):
+async def delete_project(project_id: UUID, db: Session = Depends(get_db)):
     project = db.query(Project).filter(
     Project.id == project_id
     ).first()
@@ -179,7 +197,7 @@ async def delete_project(project_id: int, db: Session = Depends(get_db)):
 # ─── 2. RECONSTRUCTED UPLOAD ROUTE (SCOPED TO PROJECT) ────────────────
 
 @app.post("/upload/")
-async def upload_pdf(project_id: int = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
     # Verify target project workspace container physically exists
     project = db.query(Project).filter(Project.id == project_id).first()
     if not project:
@@ -190,13 +208,8 @@ async def upload_pdf(project_id: int = Query(...), file: UploadFile = File(...),
         if not contents:
             raise HTTPException(status_code=400, detail="The uploaded file is empty.")
             
-        os.makedirs("uploads", exist_ok=True)
-        saved_path = f"uploads/{file.filename}"
-        with open(saved_path, "wb") as f:
-            f.write(contents)
-            
         # Bind the incoming file directly to the active project_id
-        document = Document(filename=file.filename, filepath=saved_path, project_id=project_id)
+        document = Document(filename=file.filename, project_id=project_id)
         db.add(document)
         db.commit()
         db.refresh(document)
@@ -265,12 +278,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     selected_paper_ids = request.selected_paper_ids
     instructions = request.instructions
 
-    chat_session = db.query(ChatSession).filter(ChatSession.id == chat_id).first()
-    if not chat_session:
-        raise HTTPException(status_code=404, detail="Chat session not found")
-
-    if chat_session.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Chat session does not belong to this project")
+    validate_chat_session(chat_id=chat_id, project_id=project_id, db=db)
 
     # Save User Message
     db.add(ChatMessage(role="user",message_type="chat", message=question, session_id=chat_id))
@@ -297,7 +305,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
 # ─── 4. SYNC FILE AND HISTORICAL CHAT LISTS FOR INDIVIDUAL PROJECTS ───
 
 @app.get("/documents")
-async def get_documents(project_id: int = Query(...), db: Session = Depends(get_db)):
+async def get_documents(project_id: UUID = Query(...), db: Session = Depends(get_db)):
     try:
         # Filter documents exclusively belonging to the active project context
         documents = db.query(Document).filter(Document.project_id == project_id).all()
@@ -307,7 +315,7 @@ async def get_documents(project_id: int = Query(...), db: Session = Depends(get_
         return []
 
 @app.get("/projects/{project_id}/chats/{chat_id}")
-async def get_chat_history(project_id: int, chat_id: int, db: Session = Depends(get_db)):
+async def get_chat_history(project_id: UUID, chat_id: UUID, db: Session = Depends(get_db)):
     try:
         history = db.query(ChatMessage).filter(
             ChatMessage.session_id == chat_id
@@ -318,7 +326,7 @@ async def get_chat_history(project_id: int, chat_id: int, db: Session = Depends(
         raise HTTPException(status_code=500, detail=f"Failed loading log matrices: {str(e)}")
     
 @app.post("/projects/{project_id}/chats")
-async def create_chat(project_id: int, db: Session = Depends(get_db)):
+async def create_chat(project_id: UUID, db: Session = Depends(get_db)):
     chat = ChatSession(
         project_id=project_id,
         title="New Chat"
@@ -337,8 +345,8 @@ async def create_chat(project_id: int, db: Session = Depends(get_db)):
 
 @app.delete("/projects/{project_id}/chats/{chat_id}")
 async def delete_chat(
-    project_id: int,
-    chat_id: int,
+    project_id: UUID,
+    chat_id: UUID,
     db: Session = Depends(get_db)
 ):
     chat = (
@@ -359,7 +367,7 @@ async def delete_chat(
     return {"message": "Chat deleted"}
 
 @app.delete("/projects/{project_id}/documents/{document_id}")
-async def delete_document(project_id: int, document_id: int, db: Session = Depends(get_db)):
+async def delete_document(project_id: UUID, document_id: UUID, db: Session = Depends(get_db)):
     document = (
         db.query(Document)
         .filter(
@@ -386,13 +394,8 @@ async def delete_document(project_id: int, document_id: int, db: Session = Depen
     return {"message": "Document deleted"}
 
 @app.post("/projects/{project_id}/compare")
-async def compare_documents(project_id: int, request: AnalysisRequest, db: Session = Depends(get_db)):
-    chat_session = db.query(ChatSession).filter(ChatSession.id == request.chat_id).first()
-    if not chat_session:
-        raise HTTPException(status_code=404, detail="Chat session not found")
-    if chat_session.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Chat session does not belong to this project")
-
+async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db)):
+    validate_chat_session(chat_id=request.chat_id, project_id=project_id, db=db)
 
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
@@ -438,12 +441,8 @@ async def compare_documents(project_id: int, request: AnalysisRequest, db: Sessi
     return {"message_type":"compare","message": comparison_result, "sources": sources}
 
 @app.post("/projects/{project_id}/summary")
-def summarize_documents(project_id: int, request: AnalysisRequest, db: Session = Depends(get_db)):
-    chat_session = db.query(ChatSession).filter(ChatSession.id == request.chat_id).first()
-    if not chat_session:
-        raise HTTPException(status_code=404, detail="Chat session not found")
-    if chat_session.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Chat session does not belong to this project")
+def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db)):
+    validate_chat_session(chat_id=request.chat_id, project_id=project_id, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
         selected_paper_ids=request.selected_paper_ids,
@@ -490,8 +489,8 @@ def summarize_documents(project_id: int, request: AnalysisRequest, db: Session =
     return {"message_type":"summary","message": response, "sources": sources}
 
 @app.post("/projects/{project_id}/literature-review")
-def literature_review_documents(project_id: int, request: AnalysisRequest, db: Session = Depends(get_db)):
-    chat_session_exists(chat_id=request.chat_id, project_id=project_id, db=db)
+def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db)):
+    validate_chat_session(chat_id=request.chat_id, project_id=project_id, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
         selected_paper_ids=request.selected_paper_ids,

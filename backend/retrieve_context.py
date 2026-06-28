@@ -6,8 +6,10 @@ from sqlalchemy.orm import joinedload
 from bm25_retrieval import search_bm25_index
 from retrieval import search_index, search_filtered_index
 from section_parser import classify_question
+import uuid
+from uuid import UUID
 
-def retrieve_context(question: str, project_id: int, selected_paper_ids: list[int], db, index):
+def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[UUID], db, index):
     if selected_paper_ids:
         document_filter = and_(
             Document.project_id == project_id,
@@ -138,7 +140,7 @@ def retrieve_context(question: str, project_id: int, selected_paper_ids: list[in
         "fallback" : False
     }
 
-def retrieve_document_sections( project_id: int, selected_paper_ids: list[int], db, section_groups: list[str]):
+def retrieve_document_sections( project_id: UUID, selected_paper_ids: list[UUID], db, section_groups: list[str]):
     MAX_CHUNKS_PER_SECTION = 2
     if selected_paper_ids:
         document_filter = and_(

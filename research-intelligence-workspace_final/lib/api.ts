@@ -54,8 +54,8 @@ export async function deleteProject(
 
 export async function askQuestion(
   question: string,
-  projectId: number | string,
-  chatId: number | string,
+  projectId: string,
+  chatId: string,
   activePaperIds: string[]
 ) {
   const response = await fetch("http://127.0.0.1:8000/ask/", {
@@ -65,8 +65,8 @@ export async function askQuestion(
     },
     body: JSON.stringify({
       question,
-      project_id: Number(projectId),
-      chat_id: Number(chatId),
+      project_id:(projectId),
+      chat_id: (chatId),
       selected_paper_ids : activePaperIds
     }),
   })
@@ -156,8 +156,8 @@ export async function researchAction(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        chat_id: Number(chatId),
-        selected_paper_ids: selectedPaperIds.map(Number),
+        chat_id: (chatId),
+        selected_paper_ids: selectedPaperIds,
         question,
         instructions,
       }),
