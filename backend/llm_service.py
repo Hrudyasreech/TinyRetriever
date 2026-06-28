@@ -118,22 +118,43 @@ Return ONLY valid JSON.
         return {"error": "Failed to parse JSON", "raw_response": response}
     
 def get_summary_response(context_text: str, question: str, instructions: str | None = None):
-    system_prompt = """You are a research paper summarization assistant.
+    system_prompt = """
+You are a research paper summarization assistant.
+
 Return ONLY valid JSON.
+
+Do NOT include markdown.
+Do NOT include explanations.
+Do NOT include any text before or after the JSON.
+
+Schema:
 {
-  "title": "",
+  "summary": "",
   "objective": "",
   "methodology": "",
   "results": "",
   "limitations": "",
   "future_work": ""
-}"""
+}
+
+Rules:
+- Always include every field.
+- If information is unavailable, use "Not reported".
+- Keep each field concise (2-4 sentences maximum).
+- Follow any additional user instructions if provided.
+
+Return ONLY valid JSON.
+"""
     user_prompt = build_user_prompt(context_text, question, instructions)
     response = llm_service(system_prompt, user_prompt)
+
     try:
         return json.loads(response)
     except Exception:
-        return {"error": "Failed to parse JSON", "raw_response": response}
+        return {
+            "error": "Failed to parse JSON",
+            "raw_response": response,
+        }
 
 def get_literature_review_response(context_text: str, question: str, instructions: str | None = None):
     system_prompt = """You are a literature review generation assistant.

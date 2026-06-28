@@ -222,6 +222,21 @@ function AssistantMessage({
     }
   }
 
+  let summary
+  if (message.message_type === "summary") {
+    summary = {
+      title: message.content.title,
+      authors: message.content.authors,
+      year: message.content.year,
+      summary: message.content.summary,
+      objective: message.content.objective,
+      methodology: message.content.methodology,
+      results: message.content.results,
+      limitations: message.content.limitations,
+      future_work: message.content.future_work,
+    }
+  }
+
   return (
     <div className="flex gap-3">
       <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
@@ -239,8 +254,10 @@ function AssistantMessage({
         ) : null}
 
         <div className="px-4 py-3.5">
-          {message.message_type === "compare" && comparison ? (
+          {(message.message_type === "compare" && message.role === "assistant") && comparison ? (
             <ComparisonTable comparison={comparison} />
+          ) : message.message_type === "summary" && message.role === "assistant" && summary ? (
+            <SummaryCard summary={summary} />
           ) : (
             <div className="prose prose-sm max-w-none dark:prose-invert">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -248,6 +265,7 @@ function AssistantMessage({
               </ReactMarkdown>
             </div>
           )}
+
 
           {message.citations?.length ? (
             <div className="mt-4 space-y-2">
@@ -379,3 +397,67 @@ function ComparisonTable({
     </div>
   )
 }
+
+function SummaryCard({
+  summary,
+}: {
+  summary: {
+    title: string
+    authors: string[]
+    year: string
+    summary: string
+    objective: string
+    methodology: string
+    results: string
+    limitations: string
+    future_work: string
+  }
+}) {
+  const sections = [
+    { title: "Objective", value: summary.objective },
+    { title: "Methodology", value: summary.methodology },
+    { title: "Results", value: summary.results },
+    { title: "Limitations", value: summary.limitations },
+    { title: "Future Work", value: summary.future_work },
+  ]
+  console.log(summary)
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-card shadow-sm">
+      <div className="border-b border-border px-5 py-4">
+        <h2 className="text-lg font-semibold">
+          {summary.title}
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+         • {summary.authors?.join(", ") ?? "Unknown Authors"}
+       </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          • {summary.year ?? "Unknown Year"}
+        </p>
+        {summary.summary && (
+          <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            {summary.summary}
+          </p>
+        )}
+      </div>
+
+      <div className="divide-y divide-border">
+        {sections.map((section) => (
+          <div
+            key={section.title}
+            className="px-5 py-4"
+          >
+            <h3 className="mb-2 text-sm font-semibold text-primary">
+              {section.title}
+            </h3>
+
+            <p className="text-sm leading-relaxed text-muted-foreground">
+              {section.value}
+            </p>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+

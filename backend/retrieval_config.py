@@ -1,3 +1,4 @@
+
 COMPARE_SECTIONS = [
     "abstract",
     "methodology",
@@ -10,6 +11,7 @@ SUMMARY_SECTIONS = [
     "introduction",
     "methodology",
     "results",
+    "limitations",
     "conclusion"
 ]
 

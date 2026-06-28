@@ -292,6 +292,14 @@ async function handleGenerateResearchAction(
   if (!selectedAction || !activeProject || !activeChat) return
 
   try {
+    const userMsg: Message = {
+      id: nextId(),
+      role: "user",
+      message_type: "chat",
+      content: selectedAction.label,
+    }
+    appendMessages(activeChat!.id, [userMsg])
+
     const result = await researchAction(
       activeProject.id,
       selectedAction.endpoint,
@@ -308,7 +316,7 @@ async function handleGenerateResearchAction(
       content: result.message,
       timestamp: new Date().toISOString(),
     }
-
+    console.log(result.message)
     appendMessages(activeChat.id, [assistantMsg])
 
     setModalOpen(false)

@@ -430,5 +430,58 @@ async def compare_documents(project_id: int, request: AnalysisRequest, db: Sessi
     db.commit()
     return {"message_type":"compare","message": comparison_result, "sources": sources}
 
+@app.post("/projects/{project_id}/summary")
+def summarize_documents(project_id: int, request: AnalysisRequest, db: Session = Depends(get_db)):
+    chat_session = db.query(ChatSession).filter(ChatSession.id == request.chat_id).first()
+    if not chat_session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    if chat_session.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Chat session does not belong to this project")
+    retrieval_data = retrieve_document_sections(
+        project_id=project_id,
+        selected_paper_ids=request.selected_paper_ids,
+        db=db,
+        section_groups=SUMMARY_SECTIONS
+    )
+    context_text = retrieval_data["context_text"]
+    sources = retrieval_data["sources"]
+    paper = db.query(Document).filter(Document.id.in_(request.selected_paper_ids)).first()
+
+    if retrieval_data["fallback"]:
+        db.add(ChatMessage(
+            role="user",
+            message_type="summary",
+            message=request.question,
+            session_id=request.chat_id
+        ))
+        db.add(ChatMessage(
+            role="assistant",
+            message_type="summary",
+            message=context_text,
+            session_id=request.chat_id
+        ))
+        db.commit()
+        return {
+            "message_type": "summary",
+            "message": context_text,
+            "sources": []
+        }
+    db.add(ChatMessage(role="user", message_type="summary", message=request.question, session_id=request.chat_id))
+    db.commit()
+    summary_result = get_summary_response(context_text=context_text, question=request.question, instructions=request.instructions)
+    response = {
+        "title": paper.title,
+        "authors": paper.authors.split(", ") if paper.authors else ["Unknown Author"],
+        "year": paper.published_year or 0,
+        **summary_result,
+    }
+    print("Summary Result:", response)
+    if "error" in summary_result:
+        raise HTTPException(status_code=500, detail=f"Failed to generate summary: {summary_result['error']}")    
+    db.add(ChatMessage(role="assistant", message_type="summary", message=response, session_id=request.chat_id))
+    db.commit()
+    return {"message_type":"summary","message": response, "sources": sources}
+
+
 
 
