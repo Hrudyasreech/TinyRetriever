@@ -59,6 +59,13 @@ def get_db():
     finally:
         db.close()
 
+def chat_session_exists(chat_id: int, project_id: int, db: Session = Depends(get_db)):
+    chat_session = db.query(ChatSession).filter(ChatSession.id == chat_id).first()
+    if not chat_session:
+        raise HTTPException(status_code=404, detail="Chat session not found")
+    if chat_session.project_id != project_id:
+        raise HTTPException(status_code=404, detail="Chat session does not belong to this project")
+   
 # ─── PYDANTIC VALIDATION MODELS ─────────────────────────────────────
 class ProjectCreate(BaseModel):
     name: str
@@ -481,6 +488,48 @@ def summarize_documents(project_id: int, request: AnalysisRequest, db: Session =
     db.add(ChatMessage(role="assistant", message_type="summary", message=response, session_id=request.chat_id))
     db.commit()
     return {"message_type":"summary","message": response, "sources": sources}
+
+@app.post("/projects/{project_id}/literature-review")
+def literature_review_documents(project_id: int, request: AnalysisRequest, db: Session = Depends(get_db)):
+    chat_session_exists(chat_id=request.chat_id, project_id=project_id, db=db)
+    retrieval_data = retrieve_document_sections(
+        project_id=project_id,
+        selected_paper_ids=request.selected_paper_ids,
+        db=db,
+        section_groups=LITERATURE_REVIEW_SECTIONS
+    )
+    context_text = retrieval_data["context_text"]
+    sources = retrieval_data["sources"]
+
+    if retrieval_data["fallback"]:
+        db.add(ChatMessage(
+            role="user",
+            message_type="literature_review",
+            message=request.question,
+            session_id=request.chat_id
+        ))
+        db.add(ChatMessage(
+            role="assistant",
+            message_type="literature_review",
+            message=context_text,
+            session_id=request.chat_id
+        ))
+        db.commit()
+        return {
+            "message_type": "literature-review",
+            "message": context_text,
+            "sources": []
+        }
+    db.add(ChatMessage(role="user", message_type="literature-review", message=request.question, session_id=request.chat_id))
+    db.commit()
+    literature_review_result = get_literature_review_response(context_text=context_text, question=request.question, instructions=request.instructions)
+    print("Literature Review Result:", literature_review_result)
+    if "error" in literature_review_result:
+        raise HTTPException(status_code=500, detail=f"Failed to generate literature review: {literature_review_result['error']}")
+    
+    db.add(ChatMessage(role="assistant", message_type="literature-review", message=literature_review_result, session_id=request.chat_id))
+    db.commit()
+    return {"message_type":"literature-review","message": literature_review_result, "sources": sources}
 
 
 

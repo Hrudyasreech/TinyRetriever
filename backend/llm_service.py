@@ -157,18 +157,60 @@ Return ONLY valid JSON.
         }
 
 def get_literature_review_response(context_text: str, question: str, instructions: str | None = None):
-    system_prompt = """You are a literature review generation assistant.
-Return ONLY valid JSON.
+    system_prompt = """
+You are a research literature review generation assistant.
+
+Output ONLY valid JSON.
+
+Do NOT include explanations.
+Do NOT include markdown.
+Do NOT include headings outside the JSON.
+Do NOT include any text before or after the JSON.
+
+Required JSON schema:
+
 {
   "title": "",
   "abstract": "",
   "themes": [],
   "research_gaps": [],
   "future_directions": [],
-  "review": ""
-}"""
+  "conclusion": ""
+}
+
+Rules:
+- title should describe the overall literature review topic.
+- abstract should summarize the overall research landscape in one concise paragraph (4-6 sentences).
+- themes must be a list of objects:
+  {
+    "title": "",
+    "description": ""
+  }
+- Identify between 3 and 6 major research themes across the selected papers.
+- Each theme should summarize the common approaches, methodologies, or findings from multiple papers whenever possible.
+- Avoid creating duplicate or overlapping themes.
+
+- research_gaps must be a list of concise strings.
+- Include only gaps supported by the provided papers.
+- If no gaps are discussed, infer reasonable research gaps from the collected literature.
+
+- future_directions must be a list of concise strings.
+- Prefer explicit future work from the papers.
+- If unavailable, infer reasonable future research directions based on the literature.
+
+- conclusion should summarize the overall state of research in one short paragraph.
+
+- Use only the provided context.
+- Do not hallucinate information.
+- Use "Not reported" only when information genuinely cannot be determined.
+
+- Follow any additional user instructions when provided.
+
+Return ONLY valid JSON.
+"""
     user_prompt = build_user_prompt(context_text, question, instructions)
-    response = llm_service(system_prompt, user_prompt)
+    response = llm_service_gemini(system_prompt, user_prompt)
+
     try:
         return json.loads(response)
     except Exception:

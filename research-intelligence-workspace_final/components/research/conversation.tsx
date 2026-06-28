@@ -237,6 +237,11 @@ function AssistantMessage({
     }
   }
 
+  const review =
+  message.message_type === "literature-review"
+    ? message.content
+    : undefined
+
   return (
     <div className="flex gap-3">
       <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-accent text-accent-foreground">
@@ -258,7 +263,9 @@ function AssistantMessage({
             <ComparisonTable comparison={comparison} />
           ) : message.message_type === "summary" && message.role === "assistant" && summary ? (
             <SummaryCard summary={summary} />
-          ) : (
+          ) : message.message_type === "literature-review" && message.role === "assistant" && review ? (
+            <LiteratureReviewCard review={review} />
+          ): (
             <div className="prose prose-sm max-w-none dark:prose-invert">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {message.content}
@@ -455,6 +462,99 @@ function SummaryCard({
             </p>
           </div>
         ))}
+      </div>
+    </div>
+  )
+}
+
+function LiteratureReviewCard({
+  review,
+}: {
+  review: {
+    title: string
+    abstract: string
+    themes: { title: string; description: string }[]
+    research_gaps: string[]
+    future_directions: string[]
+    conclusion: string
+  }
+}) {
+  return (
+    <div className="mt-4 rounded-xl border border-border bg-card shadow-sm">
+      {/* Header */}
+      <div className="border-b border-border px-5 py-4">
+        <h2 className="text-lg font-semibold">
+          {review.title}
+        </h2>
+
+        <p className="mt-4 text-sm leading-relaxed text-muted-foreground">
+          {review.abstract}
+        </p>
+      </div>
+
+      <div className="space-y-6 px-5 py-5">
+        {/* Themes */}
+        <section>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Research Themes
+          </h3>
+
+          <div className="space-y-3">
+            {review.themes.map((theme, index) => (
+              <div
+                key={index}
+                className="rounded-lg border border-border bg-background p-4"
+              >
+                <h4 className="font-medium">
+                  {theme.title}
+                </h4>
+
+                <p className="mt-2 text-sm leading-relaxed text-muted-foreground">
+                  {theme.description}
+                </p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* Research Gaps */}
+        <section>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Research Gaps
+          </h3>
+
+          <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed">
+            {review.research_gaps.map((gap, index) => (
+              <li key={index}>{gap}</li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Future Directions */}
+        <section>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Future Directions
+          </h3>
+
+          <ul className="list-disc space-y-2 pl-5 text-sm leading-relaxed">
+            {review.future_directions.map((direction, index) => (
+              <li key={index}>{direction}</li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Conclusion */}
+        <section>
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Conclusion
+          </h3>
+
+          <div className="rounded-lg border border-border bg-background p-4">
+            <p className="text-sm leading-relaxed">
+              {review.conclusion}
+            </p>
+          </div>
+        </section>
       </div>
     </div>
   )
