@@ -215,6 +215,8 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
         db.refresh(document)
         
         text, first_page = extract_text_from_pdf(contents)
+        text = text.replace("\x00", "")  # Remove null characters if present
+        first_page = first_page.replace("\x00", "")  # Remove null characters if present
         if not text or not text.strip():
             text = "Empty document context placeholder text."
 
@@ -243,6 +245,8 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
         all_chunk_text = []
 
         for section_name, section_text in sections.items():
+            if "\x00" in section_text:
+                print(f"⚠️ Null character detected in section '{section_name}' of document '{file.filename}'. Cleaning up.")
             chunks = chunk_text(section_text)
             for idx, chunk_text_val in enumerate(chunks):
                 chunk = Chunk(chunk_text=chunk_text_val, document_id=document.id, section=section_name, section_group=get_section_group(section_name), chunk_index=idx)
@@ -250,6 +254,7 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
                 db.flush() 
                 stored_chunks_ids.append(chunk.id)
                 all_chunk_text.append(chunk_text_val)
+        print(db.query(Chunk).count())
         db.commit()
 
         embeddings = embed_chunks(all_chunk_text)
@@ -380,9 +385,7 @@ async def delete_document(project_id: UUID, document_id: UUID, db: Session = Dep
     chunks = db.query(Chunk).filter(Chunk.document_id == document_id).all()
     for chunk in chunks:
         db.delete(chunk)
-
-    if os.path.exists(document.filepath):
-        os.remove(document.filepath)
+        
     db.delete(document)
     db.commit()
 
@@ -450,6 +453,7 @@ def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session 
         section_groups=SUMMARY_SECTIONS
     )
     context_text = retrieval_data["context_text"]
+    print("Context Text for Summary:", context_text)
     sources = retrieval_data["sources"]
     paper = db.query(Document).filter(Document.id.in_(request.selected_paper_ids)).first()
 

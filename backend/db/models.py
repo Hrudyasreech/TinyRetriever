@@ -6,7 +6,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from pgvector.sqlalchemy import Vector
 
-from db.database import Base
+from .database import Base
 
 class User(Base):
     __tablename__ = "users"
@@ -67,7 +67,7 @@ class Chunk(Base):
     chunk_text = Column(Text, nullable=False)
     chunk_index = Column(Integer, nullable=True)
     page_number = Column(Integer, nullable=True)
-    embedding = Column(Vector(384), nullable=False)  # Assuming 384-dimensional embedding space
+    embedding = Column(Vector(384), nullable=True)  # Assuming 384-dimensional embedding space
 
     # ORM Relationship: Allows c.document.filename directly in code
     document = relationship("Document", back_populates="chunks")

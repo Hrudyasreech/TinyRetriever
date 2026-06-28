@@ -42,6 +42,10 @@ def search_bm25_index(question: str, k):
 
 def rebuild_bm25(db):
     all_chunks = db.query(Chunk).all()
+    if not all_chunks:
+        global retrievr
+        retrievr = None
+        return
     build_bm25_index(all_chunks)
     save_bm25()
 
