@@ -242,6 +242,7 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
 
         
         stored_chunks_ids = []
+        stored_chunks = []
         all_chunk_text = []
 
         for section_name, section_text in sections.items():
@@ -253,11 +254,17 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
                 db.add(chunk)
                 db.flush() 
                 stored_chunks_ids.append(chunk.id)
+                stored_chunks.append(chunk)
                 all_chunk_text.append(chunk_text_val)
         print(db.query(Chunk).count())
         db.commit()
 
         embeddings = embed_chunks(all_chunk_text)
+        
+        for chunk, embedding in zip(stored_chunks, embeddings):
+            chunk.embedding = embedding.tolist()
+        db.commit()
+
         all_chunks = db.query(Chunk).all()
         build_bm25_index(all_chunks)
              
@@ -385,7 +392,7 @@ async def delete_document(project_id: UUID, document_id: UUID, db: Session = Dep
     chunks = db.query(Chunk).filter(Chunk.document_id == document_id).all()
     for chunk in chunks:
         db.delete(chunk)
-        
+
     db.delete(document)
     db.commit()
 

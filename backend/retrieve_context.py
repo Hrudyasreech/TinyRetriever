@@ -58,11 +58,11 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
 
         print(f"Section Group: {target_section} | Candidate Chunks: {len(allowed_chunk_ids)}")
         
-        ranked_chunk_ids = search_filtered_index(index=index, question=question, allowed_chunk_ids=allowed_chunk_ids, k=15)
+        ranked_chunk_ids = search_filtered_index(db=db, question=question,document_filter=document_filter, allowed_chunk_ids=allowed_chunk_ids, k=15)
         bm25_chunk_ids = [cid for cid in bm25_chunk_ids if cid in allowed_chunk_ids]
         print(f"Retrieved {len(ranked_chunk_ids)} ranked chunks")
     else:
-        ranked_chunk_ids = search_index(index=index, question=question, k=15)
+        ranked_chunk_ids = search_index(db=db, question=question, document_filter=document_filter, k=15)
 
     print("Ranked IDs:", ranked_chunk_ids[:10])
     print("FAISS IDs:", len(ranked_chunk_ids))

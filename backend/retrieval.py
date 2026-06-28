@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from sentence_transformers import SentenceTransformer 
+from sqlalchemy.orm import Session
 from db.models import Chunk
 
 
@@ -23,6 +24,8 @@ def chunk_text(text: str):
 
 def embed_chunks(chunks: list):
     embeddings = model.encode(chunks, show_progress_bar=False)
+    embeddings = np.array(embeddings).astype('float32')
+    embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)  # Normalize embeddings
     return np.array(embeddings).astype('float32')
 
 def create_or_update_index(embeddings: np.ndarray, chunk_ids: list, existing_index=None):
@@ -42,17 +45,20 @@ def create_or_update_index(embeddings: np.ndarray, chunk_ids: list, existing_ind
     index.add_with_ids(embeddings, ids_array)
     return index
     
-def search_index(index, question: str, k: int = 3):
-    if index is None or index.ntotal == 0:
-        return []
-        
-    question_embedding = model.encode([question]).astype('float32')
-    faiss.normalize_L2(question_embedding)
-    
-    scores, indices = index.search(question_embedding, k=k)
+def search_index(db, question: str, document_filter, k: int = 3):    
+    question_embedding = model.encode([question]).astype("float32")
+    question_embedding /= np.linalg.norm(question_embedding, axis=1, keepdims=True)
+    question_embedding = question_embedding[0].tolist()
+    results = (
+        db.query(Chunk)
+        .filter(Chunk.embedding != None, document_filter)
+        .order_by(Chunk.embedding.cosine_distance(question_embedding).asc())
+        .limit(k)
+        .all()
+    )
     
     # Filter out empty/padding matches (-1) safely
-    return [int(idx) for idx in indices[0] if idx != -1]
+    return [chunk.id for chunk in results if chunk.id != -1]
 
 def save_index(index):
     faiss.write_index(index, INDEX_PATH)
@@ -66,29 +72,21 @@ def load_index():
             return None
     return None
 
-def search_filtered_index(index, question: str, allowed_chunk_ids: list, k: int = 15):
-    if index is None or index.ntotal == 0:
-        return []
-
+def search_filtered_index(db, question: str, document_filter, allowed_chunk_ids: list, k: int = 15):
     if not allowed_chunk_ids:
         return []
-    question_embedding = model.encode([question]).astype("float32")
-    faiss.normalize_L2(question_embedding)
+    question_embedding = model.encode([question])[0].astype("float32").tolist()
+    results = (
+        db.query(Chunk)
+        .filter(Chunk.embedding != None)
+        .filter(Chunk.id.in_(allowed_chunk_ids))
+        .filter(document_filter)
+        .order_by(Chunk.embedding.cosine_distance(question_embedding).asc())
+        .limit(k)
+        .all()
+    )
 
-    # Search wider pool first
-    scores, indices = index.search(question_embedding, k=min(1000,index.ntotal))
-    allowed_set = set(allowed_chunk_ids)
-    filtered_results = []
-
-    for idx in indices[0]:
-        if idx == -1:
-            continue
-        if int(idx) in allowed_set:
-            filtered_results.append(int(idx))
-        if len(filtered_results) >= k:
-            break
-
-    return filtered_results
+    return [chunk.id for chunk in results]
 
 def rebuild_faiss(db):
     all_chunks = db.query(Chunk).all()
