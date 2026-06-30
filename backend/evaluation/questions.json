@@ -1,0 +1,348 @@
+[
+  {
+    "id": 1,
+    "question": "What methodology is used?",
+    "expected_section": "methodology",
+    "difficulty": "easy",
+    "required_keywords": [
+        "Fourier",
+        "Wavelet",
+        "feature extraction",
+        "lightweight classifier"
+    ],
+    "optional_keywords": [
+        "FFT",
+        "DWT",
+        "Decision Tree",
+        "Shallow Neural Network",
+        "TinyML",
+        "preprocessing"
+    ]
+  },
+  {
+    "id": 2,
+    "question": "What algorithm is proposed in this paper?",
+    "expected_section": "methodology",
+    "difficulty": "easy",
+    "required_keywords": [
+    "Shallow Neural Network",
+    "Decision Tree",
+    "TinyML"
+],
+"optional_keywords": [
+    "quantized",
+    "TensorFlow Lite",
+    "classifier",
+    "edge AI"
+]
+  },
+  {
+    "id": 3,
+    "question": "What results were obtained?",
+    "expected_section": "results",
+    "difficulty": "easy",
+    "required_keywords": [
+    "F1-score",
+    "0.94",
+    "TinyML",
+    "Decision Tree"
+],
+"optional_keywords": [
+    "latency",
+    "memory footprint",
+    "energy consumption",
+    "communication overhead"
+]
+
+  },
+  {
+    "id": 4,
+    "question": "What accuracy did the model achieve?",
+    "expected_section": "results",
+    "difficulty": "easy",
+    "required_keywords": [
+    "0.95 accuracy",
+    "0.94 F1-score",
+    "Shallow Neural Network"
+],
+"optional_keywords": [
+    "0.93 accuracy",
+    "TinyML",
+    "Decision Tree"
+]
+  },
+  {
+    "id": 5,
+    "question": "Summarize the paper.",
+    "expected_section": "abstract",
+    "difficulty": "easy",
+    "required_keywords": [
+    "IoT",
+    "anomaly detection",
+    "edge computing",
+    "lightweight framework"
+],
+"optional_keywords": [
+    "Fourier",
+    "Wavelet",
+    "TinyML",
+    "real-time",
+    "sensor networks"
+]
+  },
+  {
+    "id": 6,
+    "question": "What is this paper about?",
+    "expected_section": "abstract",
+    "difficulty": "easy",
+    "required_keywords": [
+    "IoT sensor networks",
+    "anomaly detection",
+    "edge AI"
+],
+"optional_keywords": [
+    "signal processing",
+    "real-time",
+    "energy efficiency"
+]
+  },
+  {
+    "id": 7,
+    "question": "What is the conclusion of the paper?",
+    "expected_section": "conclusion",
+    "difficulty": "easy",
+    "required_keywords": [
+    "lightweight framework",
+    "edge AI",
+    "accurate",
+    "resource constrained"
+],
+"optional_keywords": [
+    "TinyML",
+    "Shallow Neural Network",
+    "IoT"
+]
+  },
+  {
+    "id": 8,
+    "question": "What future work is suggested?",
+    "expected_section": "conclusion",
+    "difficulty": "easy",
+    "required_keywords": [
+    "real-world deployment",
+    "multi-sensor fusion",
+    "online learning"
+],
+"optional_keywords": [
+    "concept drift",
+    "pruning",
+    "mixed precision",
+    "energy harvesting"
+]
+  },
+  {
+    "id": 9,
+    "question": "How does the proposed system work?",
+    "expected_section": "methodology",
+    "difficulty": "medium",
+    "required_keywords": [
+    "preprocessing",
+    "feature extraction",
+    "classification"
+],
+"optional_keywords": [
+    "Fourier",
+    "Wavelet",
+    "Decision Tree",
+    "TinyML",
+    "cloud"
+]
+  },
+  {
+    "id": 10,
+    "question": "How well did the proposed method perform?",
+    "expected_section": "results",
+    "difficulty": "medium",
+    "required_keywords": [
+    "F1-score",
+    "0.94",
+    "TinyML",
+    "Decision Tree"
+],
+"optional_keywords": [
+    "latency",
+    "energy",
+    "memory"
+]
+  },
+  {
+    "id": 11,
+    "question": "What problem does this research address?",
+    "expected_section": "abstract",
+    "difficulty": "medium",
+    "required_keywords": [
+    "latency",
+    "bandwidth",
+    "privacy",
+    "cloud"
+],
+"optional_keywords": [
+    "real-time",
+    "communication overhead",
+    "edge computing"
+]
+  },
+  {
+    "id": 12,
+    "question": "What is the motivation behind this work?",
+    "expected_section": "introduction",
+    "difficulty": "medium",
+    "required_keywords": [
+    "cloud limitations",
+    "real-time",
+    "edge computing"
+],
+"optional_keywords": [
+    "latency",
+    "bandwidth",
+    "privacy",
+    "energy efficiency"
+]
+
+  },
+  {
+    "id": 13,
+    "question": "What limitations are discussed?",
+    "expected_section": "discussion",
+    "difficulty": "medium",
+    "required_keywords": [
+    "synthetic dataset",
+    "real-world validation"
+],
+"optional_keywords": [
+    "platform-specific",
+    "energy measurements",
+    "simulated conditions"
+]
+  },
+  {
+    "id": 14,
+    "question": "Summarize the key findings.",
+    "expected_section": "conclusion",
+    "difficulty": "medium",
+    "required_keywords": [
+    "Shallow Neural Network",
+    "0.94",
+    "TinyML",
+    "resource efficient"
+],
+"optional_keywords": [
+    "Decision Tree",
+    "communication overhead",
+    "robustness"
+]
+  },
+  {
+    "id": 15,
+    "question": "How do the authors solve the problem?",
+    "expected_section": "methodology",
+    "difficulty": "medium",
+    "required_keywords": [
+    "feature extraction",
+    "classification",
+    "edge"
+],
+"optional_keywords": [
+    "Fourier",
+    "Wavelet",
+    "Decision Tree",
+    "TinyML"
+]
+  },
+  {
+    "id": 16,
+    "question": "How did the authors validate their claims?",
+    "expected_section": "results",
+    "difficulty": "hard",
+    "required_keywords": [
+    "synthetic dataset",
+    "experiments",
+    "evaluation metrics"
+],
+"optional_keywords": [
+    "accuracy",
+    "precision",
+    "recall",
+    "F1-score",
+    "latency"
+]
+  },
+  {
+    "id": 17,
+    "question": "What makes this research important?",
+    "expected_section": "introduction",
+    "difficulty": "hard",
+    "required_keywords": [
+    "real-time",
+    "edge AI",
+    "resource constrained"
+],
+"optional_keywords": [
+    "IoT",
+    "latency",
+    "privacy",
+    "energy efficiency"
+]
+  },
+  {
+    "id": 18,
+    "question": "How is the proposed framework organized?",
+    "expected_section": "methodology",
+    "difficulty": "hard",
+    "required_keywords": [
+    "sensor layer",
+    "edge layer",
+    "cloud layer"
+],
+"optional_keywords": [
+    "preprocessing",
+    "feature extraction",
+    "classification"
+]
+  },
+  {
+    "id": 19,
+    "question": "What was ultimately achieved by this work?",
+    "expected_section": "conclusion",
+    "difficulty": "hard",
+    "required_keywords": [
+    "resource efficient",
+    "accurate",
+    "edge deployment"
+],
+"optional_keywords": [
+    "TinyML",
+    "Shallow Neural Network",
+    "communication overhead"
+]
+  },
+  {
+    "id": 20,
+    "question": "If I only had one minute to understand this paper, what should I know?",
+    "expected_section": "abstract",
+    "difficulty": "hard",
+    "required_keywords": [
+    "IoT",
+    "edge AI",
+    "anomaly detection",
+    "lightweight framework"
+],
+"optional_keywords": [
+    "Fourier",
+    "Wavelet",
+    "TinyML",
+    "0.94 F1-score",
+    "energy efficiency"
+]
+  }
+]

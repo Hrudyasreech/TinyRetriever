@@ -5,6 +5,7 @@ import re
 from networkx import relabel_gexf_graph
 from regex import P
 from sympy import intersecting_product
+from key_words import METHOD_KEYWORDS, RESULT_KEYWORDS, ABSTRACT_KEYWORDS, CONCLUSION_KEYWORDS, INTRO_KEYWORDS , DISCUSSION_KEYWORDS, METADATA_KEYWORDS, REFERENCE_KEYWORDS 
 SECTION_MARKERS = {
 
     "abstract": [
@@ -156,28 +157,78 @@ def split_sections(text):
         sections[name] = text[start:end]
     return sections
 
+scores = {
+    "abstract": 0,
+    "introduction": 0,
+    "background": 0,
+    "literature_review": 0,
+    "methodology": 0,
+    "results": 0,
+    "discussion": 0,
+    "conclusion": 0,
+    "references": 0,
+}
+
+from collections import defaultdict
+
+SECTION_THRESHOLD = 2   # Tune later from evaluation
+
+
 def classify_question(question: str):
     q = question.lower()
+    scores = defaultdict(int)
 
-    if any(word in q for word in ["author", "authors", "who wrote", "written by"]):
-        return "metadata"
-    
-    if "abstract" in q:
-        return "abstract"
+    keyword_groups = {
+        "metadata": METADATA_KEYWORDS,
+        "abstract": ABSTRACT_KEYWORDS,
+        "methodology": METHOD_KEYWORDS,
+        "results": RESULT_KEYWORDS,
+        "conclusion": CONCLUSION_KEYWORDS,
+        "discussion": DISCUSSION_KEYWORDS,
+        "references": REFERENCE_KEYWORDS,
+        "introduction": INTRO_KEYWORDS,
+    }
 
-    if any(word in q for word in ["methodology", "approach", "method", "system design"]):
-        return "methodology"
+    # Score every section
+    for section, keywords in keyword_groups.items():
+        for keyword in keywords:
+            if keyword in q:
+                scores[section] += 1
 
-    if any(word in q for word in ["result", "results", "performance", "evaluation"]):
-        return "results"
+    # Nothing matched
+    if not scores:
+        return {
+            "sections": [],
+            "scores": {},
+            "primary": None,
+            "secondary": None,
+        }
 
-    if any(word in q for word in ["conclusion", "future work"]):
-        return "conclusion"
+    ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+    primary, primary_score = ranked[0]
+    secondary = None
+    secondary_score = 0
 
-    if any(word in q for word in ["reference", "citation", "bibliography"]):
-        return "references"
+    if len(ranked) > 1:
+        secondary, secondary_score = ranked[1]
 
-    return None
+    # Decide whether to retrieve one or two sections
+    if (
+        secondary is not None
+        and (primary_score - secondary_score) < SECTION_THRESHOLD
+    ):
+        sections = [primary, secondary]
+    else:
+        sections = [primary]
+
+    return {
+        "sections": sections,
+        "scores": dict(scores),
+        "primary": primary,
+        "secondary": secondary,
+        "primary_score": primary_score,
+        "secondary_score": secondary_score,
+    }
 
 def get_section_group(section_name):
     for group, sections in SECTION_GROUPS.items():

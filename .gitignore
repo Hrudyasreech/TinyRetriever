@@ -18,6 +18,10 @@ bm25_index/
 # FAISS indexes
 *.faiss
 
+# Logs
+evaluation/
+*.csv
+
 # Uploaded documents
 uploads/
 

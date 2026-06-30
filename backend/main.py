@@ -12,7 +12,7 @@ from retrieve_context import retrieve_context, retrieve_document_sections
 from llm_service import get_chat_response, get_compare_response, get_summary_response, get_literature_review_response
 
 from extract import extract_text_from_pdf, extract_doi, get_metadata_from_crossref, get_metadata_from_llm 
-from retrieval import chunk_text, embed_chunks, create_or_update_index, search_index, load_index, save_index, search_filtered_index, rebuild_faiss
+from retrieval import chunk_text, embed_chunks
 from section_parser import split_sections, classify_question, get_allowed_sections, get_section_group
 from bm25_retrieval import build_bm25_index, search_bm25_index, rebuild_bm25, save_bm25, load_bm25
 from markdown_builder import comparison_to_markdown
@@ -31,9 +31,8 @@ if not GROQ_API_KEY:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Loads the global vector matrix search state on startup
-    app.state.index = load_index()
     app.state.bm25 = load_bm25()
-    print("🚀 FAISS Global Vector Index initialized successfully.")
+    print("🚀 BM25 Global Vector Index initialized successfully.")
     yield
 
 app = FastAPI(lifespan=lifespan)
@@ -267,10 +266,6 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
 
         all_chunks = db.query(Chunk).all()
         build_bm25_index(all_chunks)
-             
-        # Update the memory index pool and write safely to local binary tree storage
-        app.state.index = create_or_update_index(embeddings, stored_chunks_ids, app.state.index)
-        save_index(app.state.index)
         rebuild_bm25(db)
         print("Building BM25 from", len(all_chunks), "chunks")
         
@@ -300,8 +295,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
         question=question,
         project_id=project_id,
         selected_paper_ids=selected_paper_ids,
-        db=db,
-        index=app.state.index
+        db=db
     )
     context_text = retrieval_data["context_text"]
     sources = retrieval_data["sources"]
@@ -312,7 +306,17 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
     db.add(ChatMessage(role="assistant", message_type="chat", message=answer, session_id=chat_id))
     db.commit()
 
-    return {"answer": answer, "sources": sources}
+    #return {"answer": answer, "sources": sources}
+    return {
+    "answer": answer,
+    "sources": sources,
+    "target_sections": retrieval_data["target_sections"],
+    "retrieved_sections": list(dict.fromkeys(
+        chunk.section_group
+        for chunk in retrieval_data["ordered_chunks"]
+    )),
+    "fallback": retrieval_data["fallback"]
+}
     
 # ─── 4. SYNC FILE AND HISTORICAL CHAT LISTS FOR INDIVIDUAL PROJECTS ───
 
@@ -397,10 +401,6 @@ async def delete_document(project_id: UUID, document_id: UUID, db: Session = Dep
     db.commit()
 
     rebuild_bm25(db)
-    app.state.index = rebuild_faiss(db)
-    if app.state.index is not None:
-        save_index(app.state.index)
-
     return {"message": "Document deleted"}
 
 @app.post("/projects/{project_id}/compare")

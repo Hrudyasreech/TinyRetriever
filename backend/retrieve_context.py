@@ -9,7 +9,7 @@ from section_parser import classify_question
 import uuid
 from uuid import UUID
 
-def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[UUID], db, index):
+def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[UUID], db):
     if selected_paper_ids:
         document_filter = and_(
             Document.project_id == project_id,
@@ -20,16 +20,17 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
             Document.project_id == project_id
         )
     
-    target_section = classify_question(question)
-    print("Target section:", target_section)
+    classification = classify_question(question)
+    target_sections = classification["sections"]
+    print("Target sections:", target_sections)
 
-    bm25_chunk_ids = search_bm25_index(question, k=15)
-    print("BM25 IDs:", bm25_chunk_ids[:10])
+    #bm25_chunk_ids = search_bm25_index(question, k=15)
+    #print("BM25 IDs:", bm25_chunk_ids[:10])
 
     metadata_context = ""
     project_docs = []
     
-    if target_section == "metadata" or "metadata" in question.lower() or any(kw in question.lower() for kw in ["author", "doi", "publisher", "journal", "published year", "title"]):
+    if  "metadata" in target_sections:
         project_docs = db.query(Document).filter(document_filter).all()
         if project_docs:
             meta_blocks = []
@@ -46,31 +47,31 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
             metadata_context = "\n\n".join(meta_blocks)
 
     # Query vector mapping index space
-    if target_section and target_section != "metadata":
+    if target_sections and  "metadata" not in target_sections:
         allowed_chunk_ids = [
             row[0]
             for row in (db.query(Chunk.id).join(Document)
                 .filter(
                     document_filter,
-                    Chunk.section_group == target_section
+                    Chunk.section_group.in_(target_sections)
                 )
                 .all())]
 
-        print(f"Section Group: {target_section} | Candidate Chunks: {len(allowed_chunk_ids)}")
+        print(f"Section Groups: {target_sections} | Candidate Chunks: {len(allowed_chunk_ids)}")
         
         ranked_chunk_ids = search_filtered_index(db=db, question=question,document_filter=document_filter, allowed_chunk_ids=allowed_chunk_ids, k=15)
-        bm25_chunk_ids = [cid for cid in bm25_chunk_ids if cid in allowed_chunk_ids]
+        #bm25_chunk_ids = [cid for cid in bm25_chunk_ids if cid in allowed_chunk_ids]
         print(f"Retrieved {len(ranked_chunk_ids)} ranked chunks")
     else:
         ranked_chunk_ids = search_index(db=db, question=question, document_filter=document_filter, k=15)
 
     print("Ranked IDs:", ranked_chunk_ids[:10])
-    print("FAISS IDs:", len(ranked_chunk_ids))
-    print("BM25 IDs:", len(bm25_chunk_ids))
+    print("Pg IDs:", len(ranked_chunk_ids))
+    #print("BM25 IDs:", len(bm25_chunk_ids))
     
-    for cid in bm25_chunk_ids:
-        if cid not in ranked_chunk_ids:
-            ranked_chunk_ids.append(cid)
+    #for cid in bm25_chunk_ids:
+    #    if cid not in ranked_chunk_ids:
+    #        ranked_chunk_ids.append(cid)
     
     if not ranked_chunk_ids and not metadata_context:
         print("No chunks or metadata found in index.")
@@ -87,10 +88,10 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
 
     used_fallback = False
 
-    if target_section and not raw_chunks and target_section != "metadata":
+    if target_sections and not raw_chunks and "metadata" not in target_sections:
         raw_chunks = db.query(Chunk).options(joinedload(Chunk.document)).join(Document).filter(
             document_filter,
-            Chunk.section_group == target_section
+            Chunk.section_group.in_(target_sections)
         ).limit(20).all()
         used_fallback = True
 
@@ -136,7 +137,7 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
         "ordered_chunks": ordered_chunks,
         "project_docs": project_docs,
         "metadata_context": metadata_context,
-        "target_section": target_section,
+        "target_sections": target_sections,
         "fallback" : False
     }
 

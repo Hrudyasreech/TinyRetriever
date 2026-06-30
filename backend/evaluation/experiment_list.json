@@ -1,0 +1,19 @@
+{
+    "experiment": "Baseline",
+    "date": "2026-06-29",
+
+    "classifier_accuracy": 90,
+
+    "retriever_accuracy": 90,
+
+    "fact": 1.4,
+    "completeness": 1.15,
+    "relevance": 1.0,
+    "overall": 3.55,
+
+    "retrieval": "pgvector",
+    "classifier": "Rule-based Top-2",
+    "hybrid": false,
+    "fts": false
+}
+

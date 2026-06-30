@@ -15,7 +15,7 @@ model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2", device=dev
 INDEX_PATH = "index.faiss" 
 
 splitter = RecursiveCharacterTextSplitter(
-    chunk_size=500,
+    chunk_size=780,
     chunk_overlap=40
 )
 
@@ -28,22 +28,7 @@ def embed_chunks(chunks: list):
     embeddings /= np.linalg.norm(embeddings, axis=1, keepdims=True)  # Normalize embeddings
     return np.array(embeddings).astype('float32')
 
-def create_or_update_index(embeddings: np.ndarray, chunk_ids: list, existing_index=None):
-    if embeddings.size == 0:
-        return existing_index
-        
-    faiss.normalize_L2(embeddings)
-    ids_array = np.array(chunk_ids).astype('int64')
-    
-    if existing_index is None:
-        dimension = embeddings.shape[1]
-        sub_index = faiss.IndexFlatIP(dimension)
-        index = faiss.IndexIDMap(sub_index)
-    else:
-        index = existing_index
-        
-    index.add_with_ids(embeddings, ids_array)
-    return index
+
     
 def search_index(db, question: str, document_filter, k: int = 3):    
     question_embedding = model.encode([question]).astype("float32")
@@ -60,17 +45,9 @@ def search_index(db, question: str, document_filter, k: int = 3):
     # Filter out empty/padding matches (-1) safely
     return [chunk.id for chunk in results if chunk.id != -1]
 
-def save_index(index):
-    faiss.write_index(index, INDEX_PATH)
 
-def load_index():   
-    if os.path.exists(INDEX_PATH):
-        try:
-            return faiss.read_index(INDEX_PATH)
-        except Exception as e:
-            print(f"⚠️ Failed to read FAISS index: {e}")
-            return None
-    return None
+
+
 
 def search_filtered_index(db, question: str, document_filter, allowed_chunk_ids: list, k: int = 15):
     if not allowed_chunk_ids:
@@ -87,13 +64,3 @@ def search_filtered_index(db, question: str, document_filter, allowed_chunk_ids:
     )
 
     return [chunk.id for chunk in results]
-
-def rebuild_faiss(db):
-    all_chunks = db.query(Chunk).all()
-    if not all_chunks:
-        return None
-    chunk_texts = [chunk.chunk_text for chunk in all_chunks]
-    chunk_ids = [chunk.id for chunk in all_chunks]
-    embeddings = embed_chunks(chunk_texts)
-    index = create_or_update_index(embeddings, chunk_ids, existing_index=None)
-    return index
