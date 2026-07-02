@@ -20,22 +20,24 @@ const nextId = () => `gen-${idCounter++}`
 export function Workspace() {
   const [view, setView] = useState<"dashboard" | "workspace">("dashboard")
   const [projects, setProjects] = useState<Project[]>([])
-  useEffect(() => {
-    async function loadProjects() {
-      try {
-        const data = await getProjects()
-        console.log("Projects form Backend", data)
-        setProjects(data)
-        if (data.length > 0) {
-          setActiveProjectId(data[0].id)
-          setActiveChatId(data[0].chats[0].id)
-        }
-      } catch (error) {
-        console.error("Error fetching projects", error)
+  const loadProjects = async () => {
+    try {
+      const data = await getProjects();
+
+      setProjects(data);
+
+      if (data.length > 0) {
+        setActiveProjectId(data[0].id);
+        setActiveChatId(data[0].chats[0].id);
       }
+    } catch (error) {
+      console.error(error);
     }
-    loadProjects()
-  }, [])
+  };
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
   type QuickAction = (typeof quickActions)[number]
   const [showProjectModal, setShowProjectModal] = useState(false)
   const [projectName, setProjectName] = useState("")
@@ -435,6 +437,7 @@ async function handleDeletePaper(
           <ContextPanel
             papers={activeProject.papers}
             projectId={activeProjectId}
+            onUploadSuccess={loadProjects}
             activePaperIds={activePaperIds}
             onToggleActive={toggleActivePaper}
             onAction={handleResearchAction} // this is the problem

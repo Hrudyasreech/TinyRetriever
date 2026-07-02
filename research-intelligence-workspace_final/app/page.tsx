@@ -1,5 +1,5 @@
-import { Workspace } from "@/components/research/workspace"
+import LandingPage from "@/components/landing/landing-page"
 
 export default function Page() {
-  return <Workspace />
+    return <LandingPage />
 }

@@ -29,6 +29,7 @@ import type { Paper } from "@/lib/research-data"
 import { quickActions } from "@/lib/research-data"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { createClient } from "@/lib/client"
 
 const actionIcons: Record<string, LucideIcon> = {
   GitCompare,
@@ -47,6 +48,7 @@ type Props = {
   projectId: string
   onAction: (action: QuickAction) => void
   onClose?: () => void
+  onUploadSuccess?: () => Promise<void>
   /** ids of papers active for retrieval / question answering */
   activePaperIds: string[]
   onToggleActive: (id: string) => void
@@ -59,6 +61,7 @@ export function ContextPanel({
   papers,
   projectId,
   onAction,
+  onUploadSuccess,
   onClose,
   activePaperIds,
   onToggleActive,
@@ -83,6 +86,10 @@ export function ContextPanel({
 
       const formData = new FormData()
       formData.append("file", file)
+      const supabase = createClient();
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
       try {
         const response = await fetch(
@@ -90,6 +97,9 @@ export function ContextPanel({
           {
             method: "POST",
             body: formData,
+            headers: {
+              Authorization: `Bearer ${session?.access_token}`,
+            },
           }
         )
 
@@ -97,6 +107,7 @@ export function ContextPanel({
 
         console.log(data)
         alert("PDF uploaded successfully!")
+        await onUploadSuccess?.()
       } catch (err) {
         console.error(err)
         alert("Upload failed")

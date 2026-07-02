@@ -1,3 +1,4 @@
+from calendar import c
 import os
 from uuid import UUID
 from contextlib import asynccontextmanager
@@ -18,8 +19,10 @@ from bm25_retrieval import build_bm25_index, search_bm25_index, rebuild_bm25, sa
 from markdown_builder import comparison_to_markdown
 from retrieval_config import COMPARE_SECTIONS, SUMMARY_SECTIONS, LITERATURE_REVIEW_SECTIONS
 
-from db.database import engine, SessionLocal
+from db.database import engine, SessionLocal, get_db
 from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage, User
+
+from auth import verify_token, get_current_user
 
 # 1. Initialize environment properties
 load_dotenv()
@@ -28,14 +31,15 @@ GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 if not GROQ_API_KEY:
     print("⚠️ WARNING: GROQ_API_KEY is not defined in your .env configuration file.")
 
-@asynccontextmanager
+"""@asynccontextmanager
 async def lifespan(app: FastAPI):
     # Loads the global vector matrix search state on startup
     app.state.bm25 = load_bm25()
     print("🚀 BM25 Global Vector Index initialized successfully.")
     yield
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan)"""
+app = FastAPI()
 
 # Match your exact local workspace testing port
 app.add_middleware(
@@ -52,20 +56,24 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-def validate_chat_session(chat_id: UUID, project_id: UUID, db: Session = Depends(get_db)):
-    chat_session = db.query(ChatSession).filter(ChatSession.id == chat_id).first()
+def validate_chat_session(chat_id: UUID, current_user: User, db: Session = Depends(get_db)):
+    chat_session = db.query(ChatSession).join(Project).filter(ChatSession.id == chat_id, Project.user_id == current_user.id).first()
     if not chat_session:
         raise HTTPException(status_code=404, detail="Chat session not found")
-    if chat_session.project_id != project_id:
-        raise HTTPException(status_code=404, detail="Chat session does not belong to this project")
-   
+    return chat_session
+
+def validate_project(project_id: UUID, current_user: User, db: Session = Depends(get_db)):
+    project = db.query(Project).filter(Project.id == project_id, Project.user_id == current_user.id).first()
+    if not project:
+        raise HTTPException(status_code=404, detail="Project not found")    
+    return project
+
+def validate_document(document_id: UUID, current_user: User, project_id: UUID, db: Session = Depends(get_db)):
+    document = db.query(Document).join(Project).filter(Document.id == document_id, Project.user_id == current_user.id, Document.project_id == project_id).first()
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    return document
+
 # ─── PYDANTIC VALIDATION MODELS ─────────────────────────────────────
 class ProjectCreate(BaseModel):
     name: str
@@ -84,28 +92,23 @@ class AnalysisRequest(BaseModel):
     instructions: str | None = None
     question: str 
 
+@app.get("/me")
+async def me(user = Depends(verify_token)):
+    return {
+        "id": user.id,
+        "email": user.email,
+        "metadata": user.user_metadata,
+    }
 
 # ─── 1. NEW: PROJECT ARCHITECTURE WORKSPACE ENDPOINTS ─────────────────
 
 @app.post("/projects/")
-async def create_project(project_data: ProjectCreate, db: Session = Depends(get_db)):
+async def create_project(project_data: ProjectCreate, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     try:
-        user = db.query(User).first()
-
-        if not user:
-                user = User(
-                email="developer@example.com",
-                name="Developer"
-            )
-
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
         project = Project(
             name=project_data.name,
             description=project_data.description,
-            user_id=user.id
+            user_id= current_user.id,
         )
 
         db.add(project)
@@ -135,9 +138,9 @@ async def create_project(project_data: ProjectCreate, db: Session = Depends(get_
         raise HTTPException(status_code=500, detail=f"Failed to generate project record: {str(e)}")
 
 @app.get("/projects/")
-async def list_projects(db: Session = Depends(get_db)):
+async def list_projects(db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     try:
-        projects = db.query(Project).all()
+        projects = db.query(Project).filter(Project.user_id == current_user.id).all()
 
         return [
             {
@@ -182,26 +185,22 @@ async def list_projects(db: Session = Depends(get_db)):
         )
 
 @app.delete("/projects/{project_id}")
-async def delete_project(project_id: UUID, db: Session = Depends(get_db)):
-    project = db.query(Project).filter(
-    Project.id == project_id
-    ).first()
-
-    if not project:
-        raise HTTPException(404)
-
-    db.delete(project)
-    db.commit()
+async def delete_project(project_id: UUID, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
+    project = validate_project(project_id=project_id, current_user=current_user, db=db)
+    try:
+        db.delete(project)
+        db.commit()
+        return {"message": "Project deleted"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
 
 # ─── 2. RECONSTRUCTED UPLOAD ROUTE (SCOPED TO PROJECT) ────────────────
 
 @app.post("/upload/")
-async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     # Verify target project workspace container physically exists
-    project = db.query(Project).filter(Project.id == project_id).first()
-    if not project:
-        raise HTTPException(status_code=404, detail="Target project workspace context not found.")
-
+    project = validate_project(project_id=project_id, current_user=current_user, db=db)
     try:
         contents = await file.read()
         if not contents:
@@ -214,10 +213,10 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
         db.refresh(document)
         
         text, first_page = extract_text_from_pdf(contents)
-        text = text.replace("\x00", "")  # Remove null characters if present
-        first_page = first_page.replace("\x00", "")  # Remove null characters if present
+        text = text.replace("\x00", "")  
+        first_page = first_page.replace("\x00", "")  
         if not text or not text.strip():
-            text = "Empty document context placeholder text."
+            raise HTTPException(status_code=400, detail="The uploaded PDF contains no extractable text.")
 
         sections = split_sections(text)
         doi = extract_doi(first_page)
@@ -264,10 +263,10 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
             chunk.embedding = embedding.tolist()
         db.commit()
 
-        all_chunks = db.query(Chunk).all()
-        build_bm25_index(all_chunks)
-        rebuild_bm25(db)
-        print("Building BM25 from", len(all_chunks), "chunks")
+        #all_chunks = db.query(Chunk).all()
+        #build_bm25_index(all_chunks)
+        #rebuild_bm25(db)
+        #print("Building BM25 from", len(all_chunks), "chunks")
         
         return JSONResponse(content={"message": "PDF uploaded and appended to workspace index."})
 
@@ -278,17 +277,17 @@ async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...)
 
 # ─── 3. RECONSTRUCTED INTERACTION COMPONENT (WITH HISTORY CONTEXTS) ──
 @app.post("/ask/")
-async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
+async def ask_question(request: QuestionRequest, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     question = request.question
     project_id = request.project_id
     chat_id = request.chat_id
     selected_paper_ids = request.selected_paper_ids
     instructions = request.instructions
 
-    validate_chat_session(chat_id=chat_id, project_id=project_id, db=db)
+    chat_session = validate_chat_session(chat_id=chat_id, current_user=current_user, db=db)
 
     # Save User Message
-    db.add(ChatMessage(role="user",message_type="chat", message=question, session_id=chat_id))
+    db.add(ChatMessage(role="user",message_type="chat", message=question, session_id=chat_session.id))
     db.commit()
 
     retrieval_data = retrieve_context(
@@ -321,20 +320,20 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db)):
 # ─── 4. SYNC FILE AND HISTORICAL CHAT LISTS FOR INDIVIDUAL PROJECTS ───
 
 @app.get("/documents")
-async def get_documents(project_id: UUID = Query(...), db: Session = Depends(get_db)):
+async def get_documents(project_id: UUID = Query(...), db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
-        # Filter documents exclusively belonging to the active project context
-        documents = db.query(Document).filter(Document.project_id == project_id).all()
-        return [{"id": d.id, "filename": d.filename} for d in documents]
+        project = validate_project(project_id=project_id, current_user=current_user, db=db)
+        return [{"id": d.id, "filename": d.filename} for d in project.documents]
     except Exception as e:
         print(f"⚠️ Error fetching documents: {str(e)}")
         return []
 
 @app.get("/projects/{project_id}/chats/{chat_id}")
-async def get_chat_history(project_id: UUID, chat_id: UUID, db: Session = Depends(get_db)):
+async def get_chat_history(project_id: UUID, chat_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     try:
+        chat = validate_chat_session(chat_id=chat_id, current_user=current_user, db=db)
         history = db.query(ChatMessage).filter(
-            ChatMessage.session_id == chat_id
+            ChatMessage.session_id == chat.id
         ).order_by(ChatMessage.timestamp.asc()).all()
         
         return [{"id": str(m.id), "role": m.role, "message_type": m.message_type, "content": m.message, "timestamp": m.timestamp} for m in history]
@@ -342,7 +341,8 @@ async def get_chat_history(project_id: UUID, chat_id: UUID, db: Session = Depend
         raise HTTPException(status_code=500, detail=f"Failed loading log matrices: {str(e)}")
     
 @app.post("/projects/{project_id}/chats")
-async def create_chat(project_id: UUID, db: Session = Depends(get_db)):
+async def create_chat(project_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    project = validate_project(project_id=project_id, current_user=current_user, db=db)
     chat = ChatSession(
         project_id=project_id,
         title="New Chat"
@@ -363,19 +363,10 @@ async def create_chat(project_id: UUID, db: Session = Depends(get_db)):
 async def delete_chat(
     project_id: UUID,
     chat_id: UUID,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    chat = (
-        db.query(ChatSession)
-        .filter(
-            ChatSession.id == chat_id,
-            ChatSession.project_id == project_id
-        )
-        .first()
-    )
-
-    if not chat:
-        raise HTTPException(status_code=404, detail="Chat not found")
+    chat = validate_chat_session(chat_id=chat_id, current_user=current_user, db=db)
 
     db.delete(chat)
     db.commit()
@@ -383,30 +374,20 @@ async def delete_chat(
     return {"message": "Chat deleted"}
 
 @app.delete("/projects/{project_id}/documents/{document_id}")
-async def delete_document(project_id: UUID, document_id: UUID, db: Session = Depends(get_db)):
-    document = (
-        db.query(Document)
-        .filter(
-            Document.id == document_id,
-            Document.project_id == project_id).first()
-    )
-    if not document:
-        raise HTTPException(status_code=404, detail="Document not found")
-
-    chunks = db.query(Chunk).filter(Chunk.document_id == document_id).all()
-    for chunk in chunks:
-        db.delete(chunk)
-
-    db.delete(document)
-    db.commit()
-
-    rebuild_bm25(db)
-    return {"message": "Document deleted"}
+async def delete_document(project_id: UUID, document_id: UUID, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    document = validate_document(document_id=document_id, current_user=current_user, db=db, project_id=project_id)
+    try:
+        db.delete(document)
+        db.commit()
+        #rebuild_bm25(db)
+        return {"message": "Document deleted"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
 
 @app.post("/projects/{project_id}/compare")
-async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db)):
-    validate_chat_session(chat_id=request.chat_id, project_id=project_id, db=db)
-
+async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat_session = validate_chat_session(chat_id=request.chat_id, current_user=current_user, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
         selected_paper_ids=request.selected_paper_ids,
@@ -421,14 +402,14 @@ async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Sess
             role="user",
             message_type="compare",
             message=request.question,
-            session_id=request.chat_id
+            session_id= chat_session.id
         ))
 
         db.add(ChatMessage(
             role="assistant",
             message_type="compare",
             message=context_text,
-            session_id=request.chat_id
+            session_id= chat_session.id
         ))
 
         db.commit()
@@ -437,7 +418,7 @@ async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Sess
             "message": context_text,
             "sources": []
         }
-    db.add(ChatMessage(role="user", message_type="compare", message=request.question, session_id=request.chat_id))
+    db.add(ChatMessage(role="user", message_type="compare", message=request.question, session_id= chat_session.id))
     db.commit()
 
     comparison_result = get_compare_response(context_text=context_text, question=request.question, instructions=request.instructions)
@@ -446,13 +427,13 @@ async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Sess
         raise HTTPException(status_code=500, detail=f"Failed to generate comparison: {comparison_result['error']}")
 
     markdown = comparison_to_markdown(comparison_result)
-    db.add(ChatMessage(role="assistant", message_type="compare", message=comparison_result, session_id=request.chat_id))
+    db.add(ChatMessage(role="assistant", message_type="compare", message=comparison_result, session_id= chat_session.id))
     db.commit()
     return {"message_type":"compare","message": comparison_result, "sources": sources}
 
 @app.post("/projects/{project_id}/summary")
-def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db)):
-    validate_chat_session(chat_id=request.chat_id, project_id=project_id, db=db)
+def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat_session = validate_chat_session(chat_id=request.chat_id, current_user=current_user, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
         selected_paper_ids=request.selected_paper_ids,
@@ -469,13 +450,13 @@ def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session 
             role="user",
             message_type="summary",
             message=request.question,
-            session_id=request.chat_id
+            session_id= chat_session.id
         ))
         db.add(ChatMessage(
             role="assistant",
             message_type="summary",
             message=context_text,
-            session_id=request.chat_id
+            session_id= chat_session.id
         ))
         db.commit()
         return {
@@ -483,7 +464,7 @@ def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session 
             "message": context_text,
             "sources": []
         }
-    db.add(ChatMessage(role="user", message_type="summary", message=request.question, session_id=request.chat_id))
+    db.add(ChatMessage(role="user", message_type="summary", message=request.question, session_id= chat_session.id))
     db.commit()
     summary_result = get_summary_response(context_text=context_text, question=request.question, instructions=request.instructions)
     response = {
@@ -495,13 +476,13 @@ def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session 
     print("Summary Result:", response)
     if "error" in summary_result:
         raise HTTPException(status_code=500, detail=f"Failed to generate summary: {summary_result['error']}")    
-    db.add(ChatMessage(role="assistant", message_type="summary", message=response, session_id=request.chat_id))
+    db.add(ChatMessage(role="assistant", message_type="summary", message=response, session_id= chat_session.id))
     db.commit()
     return {"message_type":"summary","message": response, "sources": sources}
 
 @app.post("/projects/{project_id}/literature-review")
-def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db)):
-    validate_chat_session(chat_id=request.chat_id, project_id=project_id, db=db)
+def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat_session = validate_chat_session(chat_id=request.chat_id, current_user=current_user, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
         selected_paper_ids=request.selected_paper_ids,
@@ -516,13 +497,13 @@ def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: 
             role="user",
             message_type="literature_review",
             message=request.question,
-            session_id=request.chat_id
+            session_id= chat_session.id
         ))
         db.add(ChatMessage(
             role="assistant",
             message_type="literature_review",
             message=context_text,
-            session_id=request.chat_id
+            session_id= chat_session.id
         ))
         db.commit()
         return {
@@ -530,14 +511,14 @@ def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: 
             "message": context_text,
             "sources": []
         }
-    db.add(ChatMessage(role="user", message_type="literature-review", message=request.question, session_id=request.chat_id))
+    db.add(ChatMessage(role="user", message_type="literature-review", message=request.question, session_id=chat_session.id))
     db.commit()
     literature_review_result = get_literature_review_response(context_text=context_text, question=request.question, instructions=request.instructions)
     print("Literature Review Result:", literature_review_result)
     if "error" in literature_review_result:
         raise HTTPException(status_code=500, detail=f"Failed to generate literature review: {literature_review_result['error']}")
     
-    db.add(ChatMessage(role="assistant", message_type="literature-review", message=literature_review_result, session_id=request.chat_id))
+    db.add(ChatMessage(role="assistant", message_type="literature-review", message=literature_review_result, session_id=chat_session.id))
     db.commit()
     return {"message_type":"literature-review","message": literature_review_result, "sources": sources}
 

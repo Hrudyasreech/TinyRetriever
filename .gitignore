@@ -19,8 +19,7 @@ bm25_index/
 *.faiss
 
 # Logs
-evaluation/
-*.csv
+backend/evaluation/*.csv
 
 # Uploaded documents
 uploads/

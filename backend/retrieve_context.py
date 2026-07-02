@@ -7,7 +7,16 @@ from bm25_retrieval import search_bm25_index
 from retrieval import search_index, search_filtered_index
 from section_parser import classify_question
 import uuid
+import torch
 from uuid import UUID
+from sentence_transformers import CrossEncoder
+
+#reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", device="cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
+"""def rerank_chunks(question: str, chunks: list, k: int = 8):
+    pairs = [(question, chunk.chunk_text) for chunk in chunks]
+    scores = reranker.predict(pairs)
+    ranked = sorted(zip(chunks, scores), key=lambda x: x[1], reverse=True)
+    return [chunk for chunk, score in ranked[:k]]"""
 
 def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[UUID], db):
     if selected_paper_ids:
@@ -65,8 +74,8 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
     else:
         ranked_chunk_ids = search_index(db=db, question=question, document_filter=document_filter, k=15)
 
-    print("Ranked IDs:", ranked_chunk_ids[:10])
-    print("Pg IDs:", len(ranked_chunk_ids))
+    #print("Ranked IDs:", ranked_chunk_ids[:10])
+    #print("Pg IDs:", len(ranked_chunk_ids))
     #print("BM25 IDs:", len(bm25_chunk_ids))
     
     #for cid in bm25_chunk_ids:
@@ -100,8 +109,9 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
     else:
         chunk_dict = {c.id: c for c in raw_chunks}
         ordered_chunks = [chunk_dict[cid] for cid in ranked_chunk_ids if cid in chunk_dict]
-
-    print("Ordered Chunks:", len(ordered_chunks))
+        
+    #ordered_chunks = rerank_chunks(question, ordered_chunks, k=8)
+    #print("Ordered Chunks:", len(ordered_chunks))
 
     if not ordered_chunks and not metadata_context:
         fallback_msg = "I cannot find specific details regarding that query."

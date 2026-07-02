@@ -1,18 +1,34 @@
+import { createClient } from "./client";
 import { quickActions } from "./research-data"
 
 const API_BASE_URL = "http://127.0.0.1:8000"
+
+async function authHeaders() {
+    const supabase = createClient();
+
+    const {
+        data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+        throw new Error("User is not authenticated");
+    }
+
+    return {
+        Authorization: `Bearer ${session.access_token}`,
+        "Content-Type": "application/json",
+    };
+}
 
 export async function createProject(
   name: string,
   description: string
 ) {
   const response = await fetch(
-    "http://127.0.0.1:8000/projects/",
+    `${API_BASE_URL}/projects/`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: await authHeaders(),
       body: JSON.stringify({
         name,
         description,
@@ -28,7 +44,11 @@ export async function createProject(
 }
 
 export async function getProjects() {
-const response = await fetch(`${API_BASE_URL}/projects/`)
+const response = await fetch(`${API_BASE_URL}/projects/`,
+  {
+    method: "GET",
+    headers: await authHeaders(),
+  })
 
 if (!response.ok) {
 throw new Error("Failed to load projects")
@@ -41,9 +61,10 @@ export async function deleteProject(
   projectId: string
 ) {
   const response = await fetch(
-    `http://127.0.0.1:8000/projects/${projectId}`,
+    `${API_BASE_URL}/projects/${projectId}`,
     {
       method: "DELETE",
+      headers: await authHeaders(),
     }
   )
 
@@ -58,10 +79,15 @@ export async function askQuestion(
   chatId: string,
   activePaperIds: string[]
 ) {
-  const response = await fetch("http://127.0.0.1:8000/ask/", {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const response = await fetch(`${API_BASE_URL}/ask/`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${session?.access_token}`,
     },
     body: JSON.stringify({
       question,
@@ -83,9 +109,11 @@ export async function getChatHistory(
   chatId: string
 ) {
   const response = await fetch(
-    `http://127.0.0.1:8000/projects/${projectId}/chats/${chatId}`
-  )
-
+    `${API_BASE_URL}/projects/${projectId}/chats/${chatId}`,
+  {
+    method: "GET",
+    headers: await authHeaders(),
+  })
   if (!response.ok) {
     throw new Error("Failed to load chat history")
   }
@@ -95,9 +123,10 @@ export async function getChatHistory(
 
 export async function createChat(projectId: string) {
   const response = await fetch(
-    `http://127.0.0.1:8000/projects/${projectId}/chats`,
+    `${API_BASE_URL}/projects/${projectId}/chats`,
     {
       method: "POST",
+      headers: await authHeaders(),
     }
   )
 
@@ -113,9 +142,10 @@ export async function deleteChat(
   chatId: string
 ) {
   const response = await fetch(
-    `http://127.0.0.1:8000/projects/${projectId}/chats/${chatId}`,
+    `${API_BASE_URL}/projects/${projectId}/chats/${chatId}`,
     {
       method: "DELETE",
+      headers: await authHeaders(),
     }
   )
 
@@ -131,11 +161,15 @@ export async function deletePaper(
   documentId: string
 ) {
   const response = await fetch(
-    `http://127.0.0.1:8000/projects/${projectId}/documents/${documentId}`,
+    `${API_BASE_URL}/projects/${projectId}/documents/${documentId}`,
     {
-      method: "DELETE"
+      method: "DELETE",
+      headers: await authHeaders(),
     }
   )
+  if (!response.ok) {
+    throw new Error("Failed to delete paper")
+  }
 
   return response.json()
 }
@@ -148,12 +182,18 @@ export async function researchAction(
   question: string,
   instructions: string
 ) {
+  const supabase = createClient();
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
   const response = await fetch(
-    `http://127.0.0.1:8000/projects/${projectId}/${endpoint}`,
+    `${API_BASE_URL}/projects/${projectId}/${endpoint}`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token}`,
       },
       body: JSON.stringify({
         chat_id: (chatId),

@@ -158,6 +158,10 @@
   }
 }
 
+.logo-font {
+  font-family: var(--font-logo), cursive;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
