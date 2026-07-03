@@ -69,6 +69,7 @@ export function ContextPanel({
   onDeletePaper,
 }: Props) {
   const [selectedId, setSelectedId] = useState(papers[0]?.id)
+  const [isUploading, setIsUploading] = useState(false);
   const selected = papers.find((p) => p.id === selectedId) ?? papers[0]
   const activeCount = papers.filter((p) => activePaperIds.includes(p.id)).length
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -83,7 +84,6 @@ export function ContextPanel({
       const file = event.target.files?.[0]
 
       if (!file) return
-
       const formData = new FormData()
       formData.append("file", file)
       const supabase = createClient();
@@ -92,6 +92,7 @@ export function ContextPanel({
       } = await supabase.auth.getSession();
 
       try {
+        setIsUploading(true);
         const response = await fetch(
           `http://127.0.0.1:8000/upload/?project_id=${projectId}`,
           {
@@ -102,15 +103,17 @@ export function ContextPanel({
             },
           }
         )
-
         const data = await response.json()
-
         console.log(data)
-        alert("PDF uploaded successfully!")
+        if (response.status === 202){
+          alert(data.message)
+        }
         await onUploadSuccess?.()
       } catch (err) {
         console.error(err)
         alert("Upload failed")
+      } finally {
+        setIsUploading(false);
       }
     }
 

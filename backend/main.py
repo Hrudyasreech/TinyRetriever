@@ -1,8 +1,9 @@
 from calendar import c
 import os
+import tempfile, shutil
 from uuid import UUID
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query, BackgroundTasks
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -14,15 +15,15 @@ from llm_service import get_chat_response, get_compare_response, get_summary_res
 
 from extract import extract_text_from_pdf, extract_doi, get_metadata_from_crossref, get_metadata_from_llm 
 from retrieval import chunk_text, embed_chunks
-from section_parser import split_sections, classify_question, get_allowed_sections, get_section_group
-from bm25_retrieval import build_bm25_index, search_bm25_index, rebuild_bm25, save_bm25, load_bm25
+from section_parser import split_sections, get_section_group
 from markdown_builder import comparison_to_markdown
 from retrieval_config import COMPARE_SECTIONS, SUMMARY_SECTIONS, LITERATURE_REVIEW_SECTIONS
+from auth import verify_token, get_current_user
 
 from db.database import engine, SessionLocal, get_db
 from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage, User
 
-from auth import verify_token, get_current_user
+
 
 # 1. Initialize environment properties
 load_dotenv()
@@ -196,84 +197,97 @@ async def delete_project(project_id: UUID, db: Session = Depends(get_db), curren
         raise HTTPException(status_code=500, detail=f"Failed to delete project: {str(e)}")
 
 # ─── 2. RECONSTRUCTED UPLOAD ROUTE (SCOPED TO PROJECT) ────────────────
+def process_document( document_id: UUID, temp_file_path: str):
+    with SessionLocal() as db:
+        document = None
+        try:
+            with open(temp_file_path, "rb") as f:
+                contents = f.read()
+            
+            document = db.get(Document, document_id)
+            if not document:
+                raise ValueError(f"Document with ID {document_id} not found.")
+            text, first_page = extract_text_from_pdf(contents)
+            text = text.replace("\x00", "")  
+            first_page = first_page.replace("\x00", "")  
+            if not text or not text.strip():            
+                raise ValueError(f"The uploaded PDF contains no extractable text.")
+            sections = split_sections(text)
+            doi = extract_doi(first_page)
+            metadata = None
+            if doi:
+                metadata = get_metadata_from_crossref(doi)
+            if not metadata:
+                metadata = get_metadata_from_llm(sections.get("metadata", "")) 
+            
+            if metadata:
+                document.title = metadata.get("title", document.filename)
+                document.authors = ", ".join(metadata["authors"])
+                document.affiliations = ", ".join(metadata["affiliations"])
+                document.doi = metadata["doi"]
+                document.publisher = metadata["publisher"]
+                document.journal = metadata["journal"]
+                document.published_year = metadata["published_year"]
+                db.flush()
+            
+            stored_chunks_ids = []
+            stored_chunks = []
+            all_chunk_text = []        
+            for section_name, section_text in sections.items():
+                if "\x00" in section_text:
+                    print(f"⚠️ Null character detected in section '{section_name}' of document '{document.filename}'. Cleaning up.")
+                chunks = chunk_text(section_text)
+                for idx, chunk_text_val in enumerate(chunks):
+                    chunk = Chunk(chunk_text=chunk_text_val, document_id=document.id, section=section_name, section_group=get_section_group(section_name), chunk_index=idx)
+                    db.add(chunk)
+                    stored_chunks_ids.append(chunk.id)
+                    stored_chunks.append(chunk)
+                    all_chunk_text.append(chunk_text_val)
+            db.flush() 
 
+            embeddings = embed_chunks(all_chunk_text)
+            for chunk, embedding in zip(stored_chunks, embeddings):
+                chunk.embedding = embedding.tolist()
+
+            document.status = "READY"
+            db.commit()
+            
+        except Exception as e:
+            db.rollback()
+            if document:
+                document.status = "FAILED"
+                db.commit()
+            print(f"⚠️ Error uploading PDF: {str(e)}")
+            
+        finally:
+            if os.path.exists(temp_file_path):
+                os.remove(temp_file_path)
+    
 @app.post("/upload/")
-async def upload_pdf(project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
-    # Verify target project workspace container physically exists
+async def upload_pdf(background_tasks: BackgroundTasks, project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     project = validate_project(project_id=project_id, current_user=current_user, db=db)
     try:
-        contents = await file.read()
-        if not contents:
-            raise HTTPException(status_code=400, detail="The uploaded file is empty.")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            shutil.copyfileobj(file.file, temp_file)
+            temp_file_path = temp_file.name
             
         # Bind the incoming file directly to the active project_id
-        document = Document(filename=file.filename, project_id=project_id)
+        document = Document(filename=file.filename, project_id=project_id, status = "PROCESSING")
         db.add(document)
         db.commit()
         db.refresh(document)
-        
-        text, first_page = extract_text_from_pdf(contents)
-        text = text.replace("\x00", "")  
-        first_page = first_page.replace("\x00", "")  
-        if not text or not text.strip():
-            raise HTTPException(status_code=400, detail="The uploaded PDF contains no extractable text.")
 
-        sections = split_sections(text)
-        doi = extract_doi(first_page)
-
-        metadata = None
-        if doi:
-            metadata = get_metadata_from_crossref(doi)
-        if not metadata:
-            metadata = get_metadata_from_llm(sections.get("metadata", "")) 
-        
-        if metadata:
-            document.title = metadata["title"]
-            document.authors = ", ".join(metadata["authors"])
-            document.affiliations = ", ".join(metadata["affiliations"])
-            document.doi = metadata["doi"]
-            document.publisher = metadata["publisher"]
-            document.journal = metadata["journal"]
-            document.published_year = metadata["published_year"]
-
-            db.commit()
-
-        
-        stored_chunks_ids = []
-        stored_chunks = []
-        all_chunk_text = []
-
-        for section_name, section_text in sections.items():
-            if "\x00" in section_text:
-                print(f"⚠️ Null character detected in section '{section_name}' of document '{file.filename}'. Cleaning up.")
-            chunks = chunk_text(section_text)
-            for idx, chunk_text_val in enumerate(chunks):
-                chunk = Chunk(chunk_text=chunk_text_val, document_id=document.id, section=section_name, section_group=get_section_group(section_name), chunk_index=idx)
-                db.add(chunk)
-                db.flush() 
-                stored_chunks_ids.append(chunk.id)
-                stored_chunks.append(chunk)
-                all_chunk_text.append(chunk_text_val)
-        print(db.query(Chunk).count())
-        db.commit()
-
-        embeddings = embed_chunks(all_chunk_text)
-        
-        for chunk, embedding in zip(stored_chunks, embeddings):
-            chunk.embedding = embedding.tolist()
-        db.commit()
-
-        #all_chunks = db.query(Chunk).all()
-        #build_bm25_index(all_chunks)
-        #rebuild_bm25(db)
-        #print("Building BM25 from", len(all_chunks), "chunks")
-        
-        return JSONResponse(content={"message": "PDF uploaded and appended to workspace index."})
-
+        background_tasks.add_task(process_document, document.id, temp_file_path)
+        return JSONResponse(status_code=202,
+                            content={
+                                "document_id": str(document.id),
+                                "status": document.status,
+                                "message": "Processing started"
+                            })
     except Exception as e:
         db.rollback()
         print(f"⚠️ Error uploading PDF: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Backend processing failure: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Upload failure: {str(e)}")
 
 # ─── 3. RECONSTRUCTED INTERACTION COMPONENT (WITH HISTORY CONTEXTS) ──
 @app.post("/ask/")
@@ -285,8 +299,6 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db), 
     instructions = request.instructions
 
     chat_session = validate_chat_session(chat_id=chat_id, current_user=current_user, db=db)
-
-    # Save User Message
     db.add(ChatMessage(role="user",message_type="chat", message=question, session_id=chat_session.id))
     db.commit()
 
@@ -300,8 +312,6 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db), 
     sources = retrieval_data["sources"]
 
     answer = get_chat_response(context_text=context_text, question=question, instructions=instructions)
-
-    # Save Assistant Message
     db.add(ChatMessage(role="assistant", message_type="chat", message=answer, session_id=chat_id))
     db.commit()
 
