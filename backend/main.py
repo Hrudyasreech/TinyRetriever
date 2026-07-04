@@ -3,16 +3,18 @@ import os
 import tempfile, shutil
 from uuid import UUID
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query, BackgroundTasks
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
 from dotenv import load_dotenv
+
 from retrieve_context import retrieve_context, retrieve_document_sections
 from llm_service import get_chat_response, get_compare_response, get_summary_response, get_literature_review_response
-
 from extract import extract_text_from_pdf, extract_doi, get_metadata_from_crossref, get_metadata_from_llm 
 from retrieval import chunk_text, embed_chunks
 from section_parser import split_sections, get_section_group
@@ -28,7 +30,6 @@ from db.models import Base, Project, Document, Chunk, ChatSession, ChatMessage, 
 # 1. Initialize environment properties
 load_dotenv()
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
-
 if not GROQ_API_KEY:
     print("⚠️ WARNING: GROQ_API_KEY is not defined in your .env configuration file.")
 
@@ -41,6 +42,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)"""
 app = FastAPI()
+limiter = Limiter(key_func=get_remote_address)
 
 # Match your exact local workspace testing port
 app.add_middleware(
@@ -264,7 +266,8 @@ def process_document( document_id: UUID, temp_file_path: str):
                 os.remove(temp_file_path)
     
 @app.post("/upload/")
-async def upload_pdf(background_tasks: BackgroundTasks, project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
+@limiter.limit("5/minute")
+async def upload_pdf(request: Request, background_tasks: BackgroundTasks, project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     project = validate_project(project_id=project_id, current_user=current_user, db=db)
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
@@ -291,12 +294,13 @@ async def upload_pdf(background_tasks: BackgroundTasks, project_id: UUID = Query
 
 # ─── 3. RECONSTRUCTED INTERACTION COMPONENT (WITH HISTORY CONTEXTS) ──
 @app.post("/ask/")
-async def ask_question(request: QuestionRequest, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
-    question = request.question
-    project_id = request.project_id
-    chat_id = request.chat_id
-    selected_paper_ids = request.selected_paper_ids
-    instructions = request.instructions
+@limiter.limit("20/minute")
+async def ask_question(request: Request, payload: QuestionRequest, db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
+    question = payload.question
+    project_id = payload.project_id
+    chat_id = payload.chat_id
+    selected_paper_ids = payload.selected_paper_ids
+    instructions = payload.instructions
 
     chat_session = validate_chat_session(chat_id=chat_id, current_user=current_user, db=db)
     db.add(ChatMessage(role="user",message_type="chat", message=question, session_id=chat_session.id))
@@ -312,7 +316,7 @@ async def ask_question(request: QuestionRequest, db: Session = Depends(get_db), 
     sources = retrieval_data["sources"]
 
     answer = get_chat_response(context_text=context_text, question=question, instructions=instructions)
-    db.add(ChatMessage(role="assistant", message_type="chat", message=answer, session_id=chat_id))
+    db.add(ChatMessage(role="assistant", message_type="chat", message=answer, session_id=chat_session.id))
     db.commit()
 
     #return {"answer": answer, "sources": sources}
@@ -396,11 +400,12 @@ async def delete_document(project_id: UUID, document_id: UUID, db: Session = Dep
         raise HTTPException(status_code=500, detail=f"Failed to delete document: {str(e)}")
 
 @app.post("/projects/{project_id}/compare")
-async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    chat_session = validate_chat_session(chat_id=request.chat_id, current_user=current_user, db=db)
+@limiter.limit("4/minute")
+async def compare_documents(request: Request, project_id: UUID, payload: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat_session = validate_chat_session(chat_id=payload.chat_id, current_user=current_user, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
-        selected_paper_ids=request.selected_paper_ids,
+        selected_paper_ids=payload.selected_paper_ids,
         db=db,
         section_groups=COMPARE_SECTIONS
     )
@@ -411,7 +416,7 @@ async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Sess
         db.add(ChatMessage(
             role="user",
             message_type="compare",
-            message=request.question,
+            message=payload.question,
             session_id= chat_session.id
         ))
 
@@ -421,17 +426,16 @@ async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Sess
             message=context_text,
             session_id= chat_session.id
         ))
-
         db.commit()
 
         return {
             "message": context_text,
             "sources": []
         }
-    db.add(ChatMessage(role="user", message_type="compare", message=request.question, session_id= chat_session.id))
+    db.add(ChatMessage(role="user", message_type="compare", message=payload.question, session_id= chat_session.id))
     db.commit()
 
-    comparison_result = get_compare_response(context_text=context_text, question=request.question, instructions=request.instructions)
+    comparison_result = get_compare_response(context_text=context_text, question=payload.question, instructions=payload.instructions)
     print("Comparison Result:", comparison_result)
     if "error" in comparison_result:
         raise HTTPException(status_code=500, detail=f"Failed to generate comparison: {comparison_result['error']}")
@@ -442,24 +446,27 @@ async def compare_documents(project_id: UUID, request: AnalysisRequest, db: Sess
     return {"message_type":"compare","message": comparison_result, "sources": sources}
 
 @app.post("/projects/{project_id}/summary")
-def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    chat_session = validate_chat_session(chat_id=request.chat_id, current_user=current_user, db=db)
+@limiter.limit("4/minute")
+async def summarize_documents(request: Request, project_id: UUID, payload: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat_session = validate_chat_session(chat_id=payload.chat_id, current_user=current_user, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
-        selected_paper_ids=request.selected_paper_ids,
+        selected_paper_ids=payload.selected_paper_ids,
         db=db,
         section_groups=SUMMARY_SECTIONS
     )
     context_text = retrieval_data["context_text"]
     print("Context Text for Summary:", context_text)
     sources = retrieval_data["sources"]
-    paper = db.query(Document).filter(Document.id.in_(request.selected_paper_ids)).first()
+    paper = db.query(Document).filter(Document.id.in_(payload.selected_paper_ids)).first()
+    if not paper:
+        raise HTTPException(status_code=404, detail="Paper not found")
 
     if retrieval_data["fallback"]:
         db.add(ChatMessage(
             role="user",
             message_type="summary",
-            message=request.question,
+            message=payload.question,
             session_id= chat_session.id
         ))
         db.add(ChatMessage(
@@ -474,9 +481,9 @@ def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session 
             "message": context_text,
             "sources": []
         }
-    db.add(ChatMessage(role="user", message_type="summary", message=request.question, session_id= chat_session.id))
+    db.add(ChatMessage(role="user", message_type="summary", message=payload.question, session_id= chat_session.id))
     db.commit()
-    summary_result = get_summary_response(context_text=context_text, question=request.question, instructions=request.instructions)
+    summary_result = get_summary_response(context_text=context_text, question=payload.question, instructions=payload.instructions)
     response = {
         "title": paper.title,
         "authors": paper.authors.split(", ") if paper.authors else ["Unknown Author"],
@@ -491,11 +498,12 @@ def summarize_documents(project_id: UUID, request: AnalysisRequest, db: Session 
     return {"message_type":"summary","message": response, "sources": sources}
 
 @app.post("/projects/{project_id}/literature-review")
-def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
-    chat_session = validate_chat_session(chat_id=request.chat_id, current_user=current_user, db=db)
+@limiter.limit("4/minute")
+def literature_review_documents(request: Request, project_id: UUID, payload: AnalysisRequest, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    chat_session = validate_chat_session(chat_id=payload.chat_id, current_user=current_user, db=db)
     retrieval_data = retrieve_document_sections(
         project_id=project_id,
-        selected_paper_ids=request.selected_paper_ids,
+        selected_paper_ids=payload.selected_paper_ids,
         db=db,
         section_groups=LITERATURE_REVIEW_SECTIONS
     )
@@ -505,13 +513,13 @@ def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: 
     if retrieval_data["fallback"]:
         db.add(ChatMessage(
             role="user",
-            message_type="literature_review",
-            message=request.question,
+            message_type="literature-review",
+            message=payload.question,
             session_id= chat_session.id
         ))
         db.add(ChatMessage(
             role="assistant",
-            message_type="literature_review",
+            message_type="literature-review",
             message=context_text,
             session_id= chat_session.id
         ))
@@ -521,9 +529,9 @@ def literature_review_documents(project_id: UUID, request: AnalysisRequest, db: 
             "message": context_text,
             "sources": []
         }
-    db.add(ChatMessage(role="user", message_type="literature-review", message=request.question, session_id=chat_session.id))
+    db.add(ChatMessage(role="user", message_type="literature-review", message=payload.question, session_id=chat_session.id))
     db.commit()
-    literature_review_result = get_literature_review_response(context_text=context_text, question=request.question, instructions=request.instructions)
+    literature_review_result = get_literature_review_response(context_text=context_text, question=payload.question, instructions=payload.instructions)
     print("Literature Review Result:", literature_review_result)
     if "error" in literature_review_result:
         raise HTTPException(status_code=500, detail=f"Failed to generate literature review: {literature_review_result['error']}")
