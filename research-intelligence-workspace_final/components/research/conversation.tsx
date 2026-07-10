@@ -12,6 +12,8 @@ import {
   PanelRight,
   Paperclip,
   BookOpen,
+  Link,
+  FileUp,
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { Chat, Message, Paper } from "@/lib/research-data"
@@ -34,6 +36,7 @@ type Props = {
   chat: Chat
   papers: Paper[]
   projectName: string
+  canSend: boolean
   onSend: (text: string) => void
   onToggleLeft: () => void
   onToggleRight: () => void
@@ -49,6 +52,7 @@ export function Conversation({
   onToggleLeft,
   onToggleRight,
   activeCount,
+  canSend,
 }: Props) {
   const [input, setInput] = useState("")
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -94,7 +98,7 @@ export function Conversation({
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
           {chat.messages.length === 0 ? (
-            <EmptyState />
+            <EmptyState hasPapers={papers.length > 0} />
           ) : (
             <div className="space-y-6">
               {chat.messages.map((m) =>
@@ -114,28 +118,40 @@ export function Conversation({
         <div className="mx-auto w-full max-w-3xl">
           <div className="rounded-2xl border border-border bg-card p-2 shadow-sm focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/15">
             <textarea
+              disabled={!canSend}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
+                if (!canSend) return
+
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault()
                   submit()
                 }
               }}
               rows={1}
-              placeholder="Ask anything about your papers, or compare them…"
+              placeholder={
+                papers.length === 0
+                  ? "Upload a paper to start chatting..."
+                  : activeCount === 0
+                    ? "Select at least one paper..."
+                    : "Ask anything about your papers..."
+              }
               className="max-h-40 min-h-9 w-full resize-none bg-transparent px-2 py-1.5 text-sm leading-relaxed outline-none placeholder:text-muted-foreground"
             />
             <div className="flex items-center justify-between gap-2 px-1 pt-1">
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon-sm" aria-label="Attach paper">
+                  <Link 
+                  href = "/upload"
+                  className="size-4" /> 
                   <Paperclip className="size-4" />
                 </Button>
                 <span className="text-[11px] text-muted-foreground">
                   Grounded in {activeCount} active {activeCount === 1 ? "paper" : "papers"}
                 </span>
               </div>
-              <Button size="icon" onClick={submit} disabled={!input.trim()} aria-label="Send">
+              <Button size="icon" onClick={submit} disabled={!input.trim() || !canSend} aria-label="Send">
                 <ArrowUp className="size-4" />
               </Button>
             </div>
@@ -149,32 +165,66 @@ export function Conversation({
   )
 }
 
-function EmptyState() {
+function EmptyState({ hasPapers }: { hasPapers: boolean }) {
+  if (!hasPapers) {
+    return (
+      <div className="flex flex-col items-center py-12 text-center">
+        <div className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
+          <FileUp className="size-6" />
+        </div>
+
+        <h2 className="mt-4 text-lg font-semibold">
+          Upload your first research paper
+        </h2>
+
+        <p className="mt-2 max-w-md text-sm text-muted-foreground">
+          Add one or more PDFs to start asking questions, generating summaries,
+          comparing papers, and drafting literature reviews.
+        </p>
+
+        <div className="mt-8 rounded-xl border border-dashed border-border bg-card/50 p-5 text-left">
+          <h3 className="font-medium">Once you've uploaded papers, you can:</h3>
+
+          <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+            <li>• Ask questions across your research papers</li>
+            <li>• Compare methodologies and findings</li>
+            <li>• Generate concise summaries</li>
+            <li>• Draft literature reviews</li>
+          </ul>
+        </div>
+      </div>
+    )
+  }
+
   const samples = [
     "Compare the methodologies across all papers",
     "What datasets do these works evaluate on?",
     "Summarize the key contributions",
     "Draft a literature review introduction",
   ]
+
   return (
     <div className="flex flex-col items-center py-12 text-center">
       <div className="flex size-12 items-center justify-center rounded-2xl bg-accent text-accent-foreground">
         <Sparkles className="size-6" />
       </div>
-      <h2 className="mt-4 text-lg font-semibold tracking-tight text-balance">
+
+      <h2 className="mt-4 text-lg font-semibold">
         Start a research conversation
       </h2>
-      <p className="mt-1 max-w-sm text-sm text-muted-foreground text-pretty">
-        Ask questions across your entire paper collection. Every answer is grounded in your
-        uploaded sources.
+
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
+        Ask questions about your uploaded papers. Every response is grounded in
+        the selected research sources.
       </p>
+
       <div className="mt-6 grid w-full max-w-lg gap-2 sm:grid-cols-2">
-        {samples.map((s) => (
+        {samples.map((sample) => (
           <div
-            key={s}
+            key={sample}
             className="rounded-xl border border-border bg-card px-3.5 py-3 text-left text-sm text-muted-foreground shadow-sm"
           >
-            {s}
+            {sample}
           </div>
         ))}
       </div>

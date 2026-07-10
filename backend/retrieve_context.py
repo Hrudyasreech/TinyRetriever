@@ -113,6 +113,25 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
     #ordered_chunks = rerank_chunks(question, ordered_chunks, k=8)
     #print("Ordered Chunks:", len(ordered_chunks))
 
+    sources = []
+    seen = set()
+
+    for chunk in ordered_chunks:
+        key = (chunk.document.id, chunk.section_group)
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+
+        sources.append({
+            "paperId": str(chunk.document.id),
+            "label": f"Source {len(sources) + 1}",
+            "snippet": chunk.chunk_text[:180],
+            "section": chunk.section_group or "Unknown",
+            "page": 0,
+        })
+
     if not ordered_chunks and not metadata_context:
         fallback_msg = "I cannot find specific details regarding that query."
 
@@ -143,7 +162,7 @@ def retrieve_context(question: str, project_id: UUID, selected_paper_ids: list[U
 
     return {
         "context_text": context_text,
-        "sources": list(set([c.document.filename for c in ordered_chunks])),
+        "sources": sources,
         "ordered_chunks": ordered_chunks,
         "project_docs": project_docs,
         "metadata_context": metadata_context,

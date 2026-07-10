@@ -21,6 +21,7 @@ export type Citation = {
   page: number
 }
 
+
 export type Message = {
   id: string
   role: "user" | "assistant"
@@ -44,6 +45,7 @@ export type Message = {
 export type Chat = {
   id: string
   title: string
+  created: string
   updated: string
   messages: Message[]
 }

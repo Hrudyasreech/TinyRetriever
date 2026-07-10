@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { PanelRightOpen } from "lucide-react"
 import { CreateProjectModal } from "./create-project-modal"
+import { Navbar } from "./navbar"
+import { toast } from "sonner"
 
 let idCounter = 1000
 const nextId = () => `gen-${idCounter++}`
@@ -71,7 +73,6 @@ export function Workspace() {
   console.log("ACTIVE CHAT:", activeChatId)
   async function loadHistory() {
     if (!activeProjectId || !activeChatId) return
-
     try {
       const history = await getChatHistory(
         String(activeProjectId),
@@ -100,8 +101,9 @@ export function Workspace() {
               }
         )
       )
+
     } catch (err) {
-      console.error(err)
+      console.error(err);
     }
   }
 
@@ -113,6 +115,7 @@ async function handleNewProject() {
     projectName,
     projectDescription
   )
+  console.log(project)
 
   setProjects(prev => [...prev, project])
 
@@ -128,6 +131,7 @@ async function handleNewProject() {
   if (!activeProject) {
       return (
         <>
+          <Navbar />
           <HomeDashboard
             projects={projects}
             onOpenProject={openProject}
@@ -176,9 +180,11 @@ async function handleNewProject() {
   const handleResearchAction = (action: QuickAction) => {
   setSelectedAction(action)
   setModalOpen(true)
-}
+} 
+  const canSend = activeProject.papers.length > 0 && activePaperIds.length > 0 
 
-  function openProject(id: string) {
+  async function openProject(id: string) {
+    await loadProjects()
     selectProject(id)
     setView("workspace")
   }
@@ -220,6 +226,15 @@ async function handleNewProject() {
   }
 
   async function handleSend(text: string) {
+    if (activePaperIds.length === 0) {
+      toast.error("Please select at least one paper for retrieval.")
+      return
+    }
+    if (activeProject?.papers.length === 0) {
+      toast.error("Please Upload at least one paper to the project for retrieval.")
+      return
+    }
+    
     const userMsg: Message = {
     id: nextId(),
     role: "user",
@@ -233,14 +248,35 @@ async function handleNewProject() {
        id: nextId(),role: "assistant",message_type: "chat",content: result.answer,}
       console.log(typeof result.answer)
       appendMessages(activeChat!.id, [assistantMsg])
+
+      setProjects(prev =>
+        prev.map(project =>
+          project.id === activeProject!.id
+            ? {
+                ...project,
+                chats: project.chats.map(chat =>
+                  chat.id === activeChat!.id
+                    ? {
+                        ...chat,
+                        updated: new Date().toISOString(),
+                        title: result.title ?? chat.title,
+                      }
+                    : chat
+                )
+              }
+            : project
+        )
+      )
       console.log("ASK RESULT", result)
 
       }catch (error) {
     console.error(error)
+    toast.error("Failed to generate answer.")
    }
   }
 
   async function handleNewChat() {
+    try {
     const newChat = await createChat(String(activeProjectId))
     console.log(newChat)
     setProjects((prev) =>
@@ -251,7 +287,11 @@ async function handleNewProject() {
     console.log("Projects",projects)
     setActiveChatId(newChat.id)
     setLeftOpen(false)
+  } catch (error) {
+    console.error(error)
+    toast.error("Failed to create chat.")
   }
+}
 
   async function handleDeleteChat(chatId: string) {
   try {
@@ -272,19 +312,23 @@ async function handleNewProject() {
             }
       )
     )
-
   } catch (error) {
     console.error(error)
+    toast.error("Failed to delete chat.")
   }
 }
-async function handleDeleteProject(
-  projectId: string
-) {
-  await deleteProject(projectId)
 
-  setProjects((prev) =>
-    prev.filter((p) => p.id !== projectId)
-  )
+async function handleDeleteProject(projectId: string) {
+  try {
+    await deleteProject(projectId)
+
+    setProjects((prev) =>
+      prev.filter((p) => p.id !== projectId)
+    )
+  } catch (error) {
+    console.error(error)
+    toast.error("Failed to delete project.")
+  }
 }
 
 async function handleGenerateResearchAction(
@@ -292,6 +336,23 @@ async function handleGenerateResearchAction(
   instructions: string
 ) {
   if (!selectedAction || !activeProject || !activeChat) return
+
+  if (
+    selectedAction.endpoint === "compare" ||
+    selectedAction.endpoint === "literature-review"
+  ) {
+    if (selectedPaperIds.length < 2) {
+      toast.error(`Please select at least two papers for ${selectedAction.label}.`)
+      return
+    }
+  }
+
+  if (selectedAction.endpoint === "summary") {
+    if (selectedPaperIds.length !== 1) {
+      toast.error(`Please select exactly one paper for ${selectedAction.label}.`)
+      return
+    }
+  }
 
   try {
     const userMsg: Message = {
@@ -316,15 +377,16 @@ async function handleGenerateResearchAction(
       role: "assistant",
       message_type: result.message_type,
       content: result.message,
+      citations: result.citations,
       timestamp: new Date().toISOString(),
     }
     console.log(result.message)
     appendMessages(activeChat.id, [assistantMsg])
-
+    toast.success("Generation successful.")
     setModalOpen(false)
   } catch (error) {
     console.error(error)
-    alert("Generation failed")
+    toast.error("Generation failed")
   }
 }
 
@@ -332,6 +394,7 @@ async function handleGenerateResearchAction(
 async function handleDeletePaper(
   paperId: string
 ) {
+  const toastId = toast.loading("Deleting paper...")
   try {
     await deletePaper(
       activeProjectId,
@@ -363,8 +426,10 @@ async function handleDeletePaper(
         ),
       }
     })
+    toast.success("Paper deleted successfully.")
   } catch (error) {
     console.error(error)
+    toast.error("Failed to delete paper.")
   }
 }
   
@@ -372,6 +437,7 @@ async function handleDeletePaper(
   if (view === "dashboard") {
   return (
     <>
+      <Navbar/>
       <HomeDashboard
         projects={projects}
         onOpenProject={openProject}
@@ -394,6 +460,7 @@ async function handleDeletePaper(
 }
 
   return (
+
     <div className="flex h-dvh overflow-hidden bg-background text-foreground">
       {/* Left sidebar */}
       <div className="hidden lg:block">
@@ -415,6 +482,7 @@ async function handleDeletePaper(
         papers={activeProject.papers}
         projectName={activeProject.name}
         activeCount={activePapers.length}
+        canSend={canSend}
         onSend={handleSend}
         onToggleLeft={() => setLeftOpen(true)}
         onToggleRight={() => (rightCollapsed ? setRightCollapsed(false) : setRightOpen(true))}

@@ -10,7 +10,7 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from dotenv import load_dotenv
 
 from retrieve_context import retrieve_context, retrieve_document_sections
@@ -132,7 +132,7 @@ async def create_project(project_data: ProjectCreate, db: Session = Depends(get_
                 {
                     "id": str(chat.id),
                     "title": chat.title,
-                    "updated": "Just now",
+                    "updated": chat.created_at,
                     "messages": []
                 }
             ]}
@@ -173,9 +173,11 @@ async def list_projects(db: Session = Depends(get_db), current_user : User = Dep
                     {
                         "id": str(c.id),
                         "title": c.title or "New Chat",
+                        "created": c.created_at,
+                        "updated": c.updated_at,
                         "messages": []
                     }
-                    for c in p.chatsessions
+                    for c in sorted(p.chatsessions, key=lambda c: c.updated_at or c.created_at, reverse=True)
                 ]
             }
             for p in projects 
@@ -317,19 +319,19 @@ async def ask_question(request: Request, payload: QuestionRequest, db: Session =
 
     answer = get_chat_response(context_text=context_text, question=question, instructions=instructions)
     db.add(ChatMessage(role="assistant", message_type="chat", message=answer, session_id=chat_session.id))
+    chat_session.updated_at = func.now()
     db.commit()
 
-    #return {"answer": answer, "sources": sources}
-    return {
-    "answer": answer,
-    "sources": sources,
-    "target_sections": retrieval_data["target_sections"],
-    "retrieved_sections": list(dict.fromkeys(
-        chunk.section_group
-        for chunk in retrieval_data["ordered_chunks"]
-    )),
-    "fallback": retrieval_data["fallback"]
-}
+    return {"answer": answer, "citations": sources}
+    #return {
+    #"answer": answer,
+    #"sources": sources,
+    #"target_sections": retrieval_data["target_sections"],
+    #"retrieved_sections": list(dict.fromkeys(
+    #    chunk.section_group
+    #    for chunk in retrieval_data["ordered_chunks"]
+    #)),
+    #"fallback": retrieval_data["fallback"]}
     
 # ─── 4. SYNC FILE AND HISTORICAL CHAT LISTS FOR INDIVIDUAL PROJECTS ───
 
@@ -369,7 +371,7 @@ async def create_chat(project_id: UUID, db: Session = Depends(get_db), current_u
     return {
         "id": str(chat.id),
         "title": chat.title,
-        "updated": "Just now",
+        "updated": chat.updated_at,
         "messages": []
     }
 

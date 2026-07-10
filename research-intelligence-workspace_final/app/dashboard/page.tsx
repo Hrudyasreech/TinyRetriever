@@ -1,14 +1,12 @@
 "use client";
 
 import { useEffect } from "react";
-import { createClient } from "@/lib/client";
+import { supabase } from "@/lib/client";
 import { Workspace } from "@/components/research/workspace";
 
 export default function DashboardPage() {
   useEffect(() => {
     async function test() {
-      const supabase = createClient();
-
       const {
         data: { session },
       } = await supabase.auth.getSession();

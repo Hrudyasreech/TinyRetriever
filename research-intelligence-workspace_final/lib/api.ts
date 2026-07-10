@@ -1,10 +1,9 @@
-import { createClient } from "./client";
+import { supabase } from "./client";
 import { quickActions } from "./research-data"
 
 const API_BASE_URL = "http://127.0.0.1:8000"
 
 async function authHeaders() {
-    const supabase = createClient();
 
     const {
         data: { session },
@@ -79,7 +78,6 @@ export async function askQuestion(
   chatId: string,
   activePaperIds: string[]
 ) {
-  const supabase = createClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -182,7 +180,6 @@ export async function researchAction(
   question: string,
   instructions: string
 ) {
-  const supabase = createClient();
   const {
     data: { session },
   } = await supabase.auth.getSession();

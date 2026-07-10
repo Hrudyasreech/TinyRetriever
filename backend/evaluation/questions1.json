@@ -1,0 +1,180 @@
+[
+  {
+    "category": "exact",
+    "question": "Show me the abstract",
+    "expected": ["abstract"]
+  },
+  {
+    "category": "exact",
+    "question": "What's in the introduction?",
+    "expected": ["introduction"]
+  },
+  {
+    "category": "exact",
+    "question": "Tell me the methodology",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "exact",
+    "question": "What are the results?",
+    "expected": ["results"]
+  },
+  {
+    "category": "exact",
+    "question": "What's the conclusion?",
+    "expected": ["conclusion"]
+  },
+  {
+    "category": "exact",
+    "question": "Show the limitations",
+    "expected": ["discussion"]
+  },
+  {
+    "category": "exact",
+    "question": "Where are the references?",
+    "expected": ["references"]
+  },
+  {
+    "category": "exact",
+    "question": "What's the objectives?",
+    "expected": ["abstract"]
+  },
+  {
+    "category": "exact",
+    "question": "Give me the methods section",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "exact",
+    "question": "Abstracts please",
+    "expected": ["abstract"]
+  },
+
+  {
+    "category": "typo",
+    "question": "whats the introductoin?",
+    "expected": ["introduction"]
+  },
+  {
+    "category": "typo",
+    "question": "methodolgy section",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "typo",
+    "question": "reults and discussion",
+    "expected": ["results", "discussion"]
+  },
+  {
+    "category": "typo",
+    "question": "conclussions",
+    "expected": ["conclusion"]
+  },
+  {
+    "category": "typo",
+    "question": "objetives of the paper",
+    "expected": ["abstract"]
+  },
+  {
+    "category": "typo",
+    "question": "Show me absract",
+    "expected": ["abstract"]
+  },
+  {
+    "category": "typo",
+    "question": "What refernces are cited?",
+    "expected": ["references"]
+  },
+  {
+    "category": "typo",
+    "question": "limitaions discussed",
+    "expected": ["discussion"]
+  },
+  {
+    "category": "typo",
+    "question": "methodolgy used here",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "typo",
+    "question": "introction to the topic",
+    "expected": ["introduction"]
+  },
+
+  {
+    "category": "semantic",
+    "question": "How did they do this research?",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "semantic",
+    "question": "What are they trying to accomplish?",
+    "expected": ["abstract"]
+  },
+  {
+    "category": "semantic",
+    "question": "What's the main finding?",
+    "expected": ["conclusion"]
+  },
+  {
+    "category": "semantic",
+    "question": "Why did they do this study?",
+    "expected": ["introduction"]
+  },
+  {
+    "category": "semantic",
+    "question": "How did they gather data?",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "semantic",
+    "question": "What problem does this solve?",
+    "expected": ["abstract"]
+  },
+  {
+    "category": "semantic",
+    "question": "What's the approach they used?",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "semantic",
+    "question": "What were the key discoveries?",
+    "expected": ["results"]
+  },
+  {
+    "category": "semantic",
+    "question": "How is this organized?",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "semantic",
+    "question": "What are the main points?",
+    "expected": ["abstract"]
+  },
+
+  {
+    "category": "hard",
+    "question": "Compare the methodologies across these papers",
+    "expected": ["methodology"]
+  },
+  {
+    "category": "hard",
+    "question": "What makes this paper novel?",
+    "expected": ["abstract", "conclusion"]
+  },
+  {
+    "category": "hard",
+    "question": "Are there contradictions in the findings?",
+    "expected": ["discussion", "results"]
+  },
+  {
+    "category": "hard",
+    "question": "How do the objectives align?",
+    "expected": ["abstract"]
+  },
+  {
+    "category": "hard",
+    "question": "What's missing from the literature review?",
+    "expected": ["introduction", "discussion"]
+  }
+]

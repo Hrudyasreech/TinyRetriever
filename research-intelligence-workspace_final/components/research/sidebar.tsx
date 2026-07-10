@@ -9,11 +9,47 @@ import {
   Check,
   PanelLeftClose,
   LayoutGrid,
+  Moon,
+  Sun,
+  Trash2,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import type { Project, Chat } from "@/lib/research-data"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
+import { useTheme } from "next-themes"
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+} from "@/components/ui/avatar"
+
+import {
+  DropdownMenu,
+  DropdownMenuGroup,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
+
+import { useRouter } from "next/navigation"
+import { supabase } from "@/lib/client"
+import type { User } from "@supabase/supabase-js"
+
 
 type Props = {
   projects: Project[]
@@ -38,7 +74,34 @@ export function Sidebar({
   onClose,
   onHome,
 }: Props) {
+  const router = useRouter()
   const [switcherOpen, setSwitcherOpen] = useState(false)
+  const { theme, setTheme } = useTheme()
+  const [isDeletingChat, setIsDeletingChat] = useState(false)
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [mounted, setMounted] = useState(false)
+  const [user, setUser] = useState<User | null>(null)
+  
+    useEffect(() => {
+      setMounted(true)
+  
+      async function loadUser() {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser()
+  
+        setUser(user)
+      }
+  
+      loadUser()
+    }, [])
+  
+    const handleLogout = async () => {
+      await supabase.auth.signOut()
+  
+      router.push("/")
+    }
+  
 
   return (
     <aside className="flex h-full w-72 flex-col border-r border-sidebar-border bg-sidebar">
@@ -49,7 +112,7 @@ export function Sidebar({
             <FlaskConical className="size-4" />
           </div>
           <div className="leading-tight">
-            <p className="text-sm font-semibold tracking-tight">Lumen</p>
+            <p className="text-sm font-semibold tracking-tight">Tiny Retriever</p>
             <p className="text-[11px] text-muted-foreground">Research Intelligence</p>
           </div>
         </div>
@@ -143,28 +206,71 @@ export function Sidebar({
                   active ? "bg-accent text-accent-foreground" : "hover:bg-accent/60",
                 )}
               >
-                <MessageSquare
-                  className={cn(
-                    "mt-0.5 size-4 shrink-0",
-                    active ? "text-primary" : "text-muted-foreground",
-                  )}
-                />
+               
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm font-medium text-foreground">
                     {chat.title}
                   </span>
-                  <span className="block text-[11px] text-muted-foreground">{chat.updated}</span>
                 </span>
+                {/* 1. Use a standard HTML button for the trash icon */}
                 <button
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      console.log("Delete chat", chat.id)
-                      onDeleteChat(chat.id)
-                    }}
-                    className="opacity-0 group-hover:opacity-100 text-red-500 text-xs px-2"
-                  >
-                    ✕
+                  type="button"
+                  className="opacity-0 group-hover:opacity-100 text-red-500 text-xs px-2 cursor-pointer transition-opacity"
+                  onClick={(e) => {
+                    e.stopPropagation(); // Instantly stops the parent chat item from opening
+                    setIsDeleteOpen(true); // Manually opens the dialog
+                  }}
+                >
+                  <Trash2 className="size-4" />
                 </button>
+
+                {/* 2. Bind the Dialog directly to your local state */}
+                <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
+                  <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Delete Chat?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        This conversation will be permanently deleted.
+                        <br />
+                        <br />
+                        This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+
+                    <AlertDialogFooter>
+                      <AlertDialogCancel 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setIsDeleteOpen(false); // Manually close
+                        }}
+                      >
+                        Cancel
+                      </AlertDialogCancel>
+
+                      <AlertDialogAction
+                        disabled={isDeletingChat}
+                        onClick={async (e) => {
+                          e.stopPropagation(); // Blocks parent container selection loops
+                          console.log("Delete clicked");
+                          setIsDeletingChat(true);
+
+                          try {
+                            console.log("Calling onDeleteChat");
+                            await onDeleteChat(chat.id);
+                            console.log("Finished");
+                            setIsDeleteOpen(false); // Close dialog on success
+                          } catch (e) {
+                            console.error(e);
+                          } finally {
+                            setIsDeletingChat(false);
+                          }
+                        }}
+                      >
+                        {isDeletingChat ? "Deleting..." : "Delete"}
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               </div>
             )
           })}
@@ -172,13 +278,52 @@ export function Sidebar({
       </div>
 
       {/* User */}
-      <div className="flex items-center gap-2.5 border-t border-sidebar-border px-4 py-3">
-        <div className="flex size-8 items-center justify-center rounded-full bg-accent text-sm font-semibold text-accent-foreground">
-          DR
-        </div>
-        <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-sm font-medium">Dr. Riya Nair</p>
-          <p className="truncate text-[11px] text-muted-foreground">Research Lab · Pro</p>
+      <div className="mt-auto border-t border-sidebar-border p-4">
+        <div className="flex items-center justify-between gap-2">
+          
+          {/* Profile Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <div className="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-accent cursor-pointer outline-none">
+                <Avatar className="h-9 w-9 shrink-0">
+                  <AvatarImage src={user?.user_metadata.avatar_url} />
+                  <AvatarFallback>
+                    {user?.user_metadata.full_name?.[0]}
+                  </AvatarFallback>
+                </Avatar>
+
+                <span className="hidden md:block truncate text-sm font-medium max-w-[100px]">
+                  {user?.user_metadata.full_name?.split(" ")[0]}
+                </span>
+              </div>
+            </DropdownMenuTrigger>
+
+            <DropdownMenuContent side="right" align="end" sideOffset={12}>
+              <DropdownMenuItem onClick={() => router.push("/")}>
+                Home
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLogout}>
+                Logout
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          {/* Icon-Only Theme Toggle (Saves Space Side-by-Side) */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 shrink-0 rounded-lg hover:bg-accent"
+            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            aria-label="Toggle theme"
+          >
+            {theme === "dark" ? (
+              <Sun className="h-4 w-4" />
+            ) : (
+              <Moon className="h-4 w-4" />
+            )}
+          </Button>
+
         </div>
       </div>
     </aside>

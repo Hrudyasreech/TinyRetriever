@@ -1,14 +1,12 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
-import { createClient } from "@/lib/client";
+import { supabase } from "@/lib/client";
 
 export default function LoginPage() {
 
     const handleGoogleLogin = async () => {
     try {
-        const supabase = createClient();
-
         await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {

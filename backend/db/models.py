@@ -92,6 +92,7 @@ class ChatSession(Base):
     project_id = Column(UUID(as_uuid=True), ForeignKey("projects.id", ondelete="CASCADE"), index=True, nullable=False)
     title = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     project= relationship("Project", back_populates="chatsessions")
     messages = relationship("ChatMessage", back_populates="session", cascade="all, delete-orphan")
