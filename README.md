@@ -1,14 +1,15 @@
 # TinyRetriever
-
+![Python](https://img.shields.io/badge/Python-3.11+-blue)
+![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-pgvector-blue)
+![React](https://img.shields.io/badge/React-TypeScript-61DAFB)
 > A Retrieval-Augmented Generation (RAG) workspace for semantic search, conversational question answering, and literature review over research papers.
-
-![Architecture](docs/tiny_retriever_pipeline_flow_simple.png)
 
 ---
 
 ## Overview
 
-TinyRetriever is a backend-focused Retrieval-Augmented Generation (RAG) application designed to help users interact with research papers using natural language.
+TinyRetriever is a Retrieval-Augmented Generation (RAG) workspace for exploring research papers through semantic search, conversational question answering, and AI-assisted literature review.
 
 Instead of manually searching through lengthy documents, users can upload research papers, perform semantic search, ask context-aware questions, generate literature reviews, and manage conversations through a single workspace.
 
@@ -16,23 +17,38 @@ The project focuses on improving retrieval quality using section-aware retrieval
 
 ---
 
+## Why TinyRetriever?
+
+Many RAG systems treat documents as flat text, often overlooking the structure present in research papers.
+
+TinyRetriever addresses this by combining:
+
+- Section-aware retrieval
+- Metadata filtering
+- Semantic vector search
+- Context-aware question answering
+
+This leads to more relevant retrieval and better grounded responses.
+---
+
 ## Features
 
-- 📄 Upload and manage multiple research papers
-- 🔍 Semantic search over uploaded documents
+- 📄 Upload and manage research papers
 - 💬 Conversational question answering
 - 📝 Literature review generation
+- 🔍 Semantic search
 - 📂 Persistent chat sessions
-- 🏷️ Automatic metadata extraction
 - 📑 Section-aware retrieval
+- 🏷️ Automatic metadata extraction
 - 🧩 Semantic chunking
-- ⚡ FastAPI REST backend
-- 🗄️ PostgreSQL + pgvector vector database
-- 📊 Project statistics dashboard
-
+- 🗄️ PostgreSQL + pgvector
+- ⚡ FastAPI backend
 ---
 
 ## System Architecture
+<p align="center">
+  <img src="docs/tiny_retriever_pipeline_flow_simple.png" width="500">
+</p>
 
 TinyRetriever follows a modular Retrieval-Augmented Generation pipeline.
 
@@ -44,10 +60,6 @@ TinyRetriever follows a modular Retrieval-Augmented Generation pipeline.
 6. User questions are classified to identify the most relevant document sections.
 7. The retriever performs semantic similarity search.
 8. Retrieved context is provided to the LLM to generate grounded responses.
-
-The overall architecture is shown below.
-
-![System Architecture](docs/architecture.png)
 
 ---
 
@@ -61,39 +73,20 @@ The evaluation focused on:
 - Response Quality
 - Retrieval Latency
 
-This benchmark helped compare different retrieval strategies and guided improvements to the retrieval pipeline.
+This benchmark guided architectural decisions including the adoption of section-aware retrieval and the removal of hybrid BM25 search, which empirically reduced answer quality.
 
 ---
 
 ## Tech Stack
 
-### Frontend
-
-- React
-- TypeScript
-
-### Backend
-
-- FastAPI
-- Python
-
-### Database
-
-- PostgreSQL
-- pgvector
-
-### AI & NLP
-
-- Sentence Transformers
-- Groq API
-- Gemini API (supported)
-- Semantic Embeddings
-
-### Other Tools
-
-- SQLAlchemy
-- Uvicorn
-- Crossref API
+| Category | Technologies |
+|----------|--------------|
+| Frontend | React, TypeScript |
+| Backend | FastAPI, Python |
+| Database | PostgreSQL, pgvector |
+| AI | Sentence Transformers, Gemini, Groq |
+| ORM | SQLAlchemy |
+| APIs | Crossref API |
 
 ---
 
@@ -151,7 +144,6 @@ npm run dev
 
 ## Future Improvements
 
-- Hybrid retrieval with reranking
 - Citation highlighting
 - Multi-document reasoning
 - User authentication
@@ -160,20 +152,13 @@ npm run dev
 - Automatic evaluation dashboard
 
 ---
+## Key Design Decisions
 
-## Why TinyRetriever?
-
-Many research assistants retrieve information from an entire document without considering its structure.
-
-TinyRetriever improves this by combining:
-
-- Section-aware retrieval
-- Metadata filtering
-- Semantic vector search
-- Context-aware question answering
-
-This leads to more relevant retrieval and better grounded responses.
-
+- **Section-aware retrieval** to narrow the search space before semantic retrieval.
+- **Metadata filtering** to improve retrieval relevance.
+- **PostgreSQL + pgvector** for scalable vector similarity search.
+- **FastAPI** to orchestrate document processing and query workflows.
+- **35-question benchmark** to evaluate retrieval quality, response quality, and latency.
 ---
 
 ## Author
@@ -182,4 +167,4 @@ This leads to more relevant retrieval and better grounded responses.
 
 Computer and Communication Engineering Student
 
-Backend Development • AI Applications • Retrieval-Augmented Generation
+Interested in Backend Development, AI Applications, and Retrieval-Augmented Generation systems.
