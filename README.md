@@ -16,7 +16,6 @@ Instead of manually searching through lengthy documents, users can upload resear
 The project focuses on improving retrieval quality using section-aware retrieval, metadata filtering, and vector search powered by PostgreSQL and pgvector.
 
 ---
-
 ## Why TinyRetriever?
 
 Many RAG systems treat documents as flat text, often overlooking the structure present in research papers.
@@ -28,7 +27,8 @@ TinyRetriever addresses this by combining:
 - Semantic vector search
 - Context-aware question answering
 
-This leads to more relevant retrieval and better grounded responses.
+This leads to more relevant and grounded responses.
+
 ---
 
 ## Features
