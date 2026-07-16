@@ -2,7 +2,7 @@
 
 > A Retrieval-Augmented Generation (RAG) workspace for semantic search, conversational question answering, and literature review over research papers.
 
-![Architecture](docs/architecture.png)
+![Architecture](docs/tiny_retriever_pipeline_flow_simple.png)
 
 ---
 
