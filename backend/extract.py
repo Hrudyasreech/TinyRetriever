@@ -3,22 +3,32 @@ import requests
 import re
 import json
 import openai
-import os
-
+import os, io
+from docx import Document 
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+
+def extract_text_from_docx(docx_bytes):
+    doc = Document(io.BytesIO(docx_bytes))
+    paragraphs = [
+        para.text
+        for para in doc.paragraphs
+        if para.text.strip()
+    ]
+
+    text = "\n".join(paragraphs)
+    text_f = "\n".join(paragraphs[:5])
+
+    return text, text_f
+
 
 def extract_text_from_pdf(pdf_bytes):
     pdf = fitz.open(stream=pdf_bytes, filetype="pdf")
-    
-    text = ""
-    for page in pdf:
-        text += page.get_text()
-        
-    # Safely get the first page text after the loop
+
+    text = "".join(page.get_text() for page in pdf)
     text_f = pdf[0].get_text() if len(pdf) > 0 else ""
 
-    pdf.close()
-    return text, text_f
+    pdf.close() 
+    return text, text_f 
 
 def extract_doi(text):
 

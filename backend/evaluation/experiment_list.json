@@ -66,5 +66,66 @@
     "llm_score": 3.05,
     "notes": "CrossEncoder reranking did not improve answer quality for the current dataset (2–5 research papers). The additional retrieval stages increased complexity without improving end-to-end performance.",
     "decision": "Rejected"
+  },
+
+  {
+    "id": 1,
+    "name": "Hybrid Question Classification",
+    "date": "2026-07-08",
+
+    "pipeline": [
+      "rule_based",
+      "rapidfuzz",
+      "embedding_similarity",
+      "llm_fallback"
+    ],
+
+    "rule_based": true,
+    "rapidfuzz": true,
+    "embedding_similarity": true,
+    "llm_fallback": true,
+
+    "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "llm": "Llama 3.1 8B",
+
+    "total_questions": 35,
+
+    "top1_accuracy": 74.29,
+    "top2_accuracy": 74.29,
+
+    "usage": {
+      "rule_based": 17,
+      "rapidfuzz": 6,
+      "embedding": 8,
+      "llm": 4
+    },
+
+    "difficulty": {
+      "exact": {
+        "top1": 100.0,
+        "top2": 100.0
+      },
+      "typo": {
+        "top1": 90.0,
+        "top2": 90.0
+      },
+      "semantic": {
+        "top1": 40.0,
+        "top2": 40.0
+      },
+      "hard": {
+        "top1": 60.0,
+        "top2": 60.0
+      }
+    },
+
+    "observations": [
+      "Rule-based matching handled the majority of straightforward queries.",
+      "RapidFuzz corrected spelling mistakes and minor wording variations before semantic matching.",
+      "Embedding similarity resolved semantically related queries that were not matched by lexical rules.",
+      "LLM fallback was invoked only for ambiguous or low-confidence queries to minimize computational cost."
+    ],
+
+    "decision": "Accepted"
   }
 ]

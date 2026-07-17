@@ -2,6 +2,7 @@ from calendar import c
 import os
 import tempfile, shutil
 from uuid import UUID
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends, Query, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
@@ -13,6 +14,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 from dotenv import load_dotenv
 
+from extract import extract_text_from_docx
 from retrieve_context import retrieve_context, retrieve_document_sections
 from llm_service import get_chat_response, get_compare_response, get_summary_response, get_literature_review_response
 from extract import extract_text_from_pdf, extract_doi, get_metadata_from_crossref, get_metadata_from_llm 
@@ -205,17 +207,25 @@ def process_document( document_id: UUID, temp_file_path: str):
     with SessionLocal() as db:
         document = None
         try:
+            extension = Path(temp_file_path).suffix.lower()
             with open(temp_file_path, "rb") as f:
                 contents = f.read()
             
             document = db.get(Document, document_id)
             if not document:
                 raise ValueError(f"Document with ID {document_id} not found.")
-            text, first_page = extract_text_from_pdf(contents)
+            
+            if extension == ".pdf":
+                text, first_page = extract_text_from_pdf(contents)
+            elif extension == ".docx":
+                text, first_page = extract_text_from_docx(contents)
+            else:
+                raise ValueError(f"Unsupported file extension: {extension}")
+            
             text = text.replace("\x00", "")  
             first_page = first_page.replace("\x00", "")  
             if not text or not text.strip():            
-                raise ValueError(f"The uploaded PDF contains no extractable text.")
+                raise ValueError(f"The uploaded document contains no extractable text.")
             sections = split_sections(text)
             doi = extract_doi(first_page)
             metadata = None
@@ -261,7 +271,7 @@ def process_document( document_id: UUID, temp_file_path: str):
             if document:
                 document.status = "FAILED"
                 db.commit()
-            print(f"⚠️ Error uploading PDF: {str(e)}")
+            print(f"⚠️ Error uploading document: {str(e)}")
             
         finally:
             if os.path.exists(temp_file_path):
@@ -272,7 +282,12 @@ def process_document( document_id: UUID, temp_file_path: str):
 async def upload_pdf(request: Request, background_tasks: BackgroundTasks, project_id: UUID = Query(...), file: UploadFile = File(...), db: Session = Depends(get_db), current_user : User = Depends(get_current_user)):
     project = validate_project(project_id=project_id, current_user=current_user, db=db)
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+        extension = Path(file.filename).suffix.lower()
+        ALLOWED_EXTENSIONS = {".pdf", ".docx"}
+        if extension not in ALLOWED_EXTENSIONS:
+            raise HTTPException(status_code=400, detail=f"Invalid file extension. Allowed extensions: {', '.join(ALLOWED_EXTENSIONS)}")
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=extension) as temp_file:
             shutil.copyfileobj(file.file, temp_file)
             temp_file_path = temp_file.name
             
